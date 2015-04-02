@@ -2,6 +2,20 @@ package main
 
 import "fmt"
 
+// Maps absolute addresses to names of OS calls
+var addressToOsCallName = map[uint]string{
+0xFFB9: "OSRDRM",
+0xFFBF: "OSEVEN",
+0xFFC2: "GSINIT",
+0xFFC5: "GSREAD",
+0xFFEE: "OSWRCH",
+0xFFE0: "OSRDCH",
+0xFFE7: "OSNEWL",
+0xFFE3: "OSASCI",
+0xFFF4: "OSBYTE",
+0xFFF7: "OSCLI",
+}
+
 type Decoder func(bytes []byte, cursor uint)(out string)
 
 type opcode struct {
@@ -100,10 +114,10 @@ var OpCodes = []opcode{
   {0xEE, 3, "INC", genAbsolute},
   {0xFE, 3, "INC", genAbsoluteX},
 
-  {0x4C, 3, "JMP", genAbsolute},
+  {0x4C, 3, "JMP", genAbsoluteOsCall},
   {0x6C, 3, "JMP", genIndirect},
 
-  {0x20, 3, "JSR", genAbsolute},
+  {0x20, 3, "JSR", genAbsoluteOsCall},
 
   {0xA9, 2, "LDA", genImmediate},
   {0xA5, 2, "LDA", genZeroPage},
@@ -236,6 +250,16 @@ func genZeroPageY(bytes []byte, _ uint) (string) {
 func genAbsolute(bytes []byte, _ uint) (string) {
   val := (uint(bytes[2]) << 8) + uint(bytes[1])
   return fmt.Sprintf("$%04X", val)
+}
+
+func genAbsoluteOsCall(bytes []byte, _ uint) (string) {
+  val := (uint(bytes[2]) << 8) + uint(bytes[1])
+  osCall, ok := addressToOsCallName[val]
+  out := fmt.Sprintf("$%04X", val)
+  if ok {
+    return fmt.Sprintf("%s  (%s)", out, osCall)
+  }
+  return out
 }
 
 func genAbsoluteX(bytes []byte, _ uint) (string) {
