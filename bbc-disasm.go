@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -30,49 +29,19 @@ type catalog struct {
 	startSector int
 }
 
-func findBranchTargets(program []uint8, maxBytes, offset uint) []int {
-	targets := []int{}
-
-	cursor := offset
-	for cursor < (offset + maxBytes) {
-		b := program[cursor]
-
-		if op, ok := OpCodesMap[b]; ok {
-			if op.isBranch() {
-				// This is ugly but it will do for now
-				instructions := program[cursor : cursor+op.length]
-
-				offset := int(instructions[1]) + 2 // All branches are 2 bytes long
-				if offset > 127 {
-					offset = offset - 256
-				}
-				targets = append(targets, int(cursor+uint(offset)))
-			}
-			cursor += op.length
-		} else {
-			cursor++
-		}
-	}
-
-	sort.Ints(targets)
-	return targets
-}
-
 func disassemble(program []uint8, maxBytes, offset uint) {
-	bt := findBranchTargets(program, maxBytes, offset)
+	// First pass through program is to find the location
+	// of any branches. These will be marked as labels in
+	// the output.
+	findBranchTargets(program, maxBytes, offset)
 
+	// Second pass through program is to decode each instruction
+	// and print to stdout.
 	cursor := offset
 	for cursor < (offset + maxBytes) {
-		// Check if we are at a loop label
-		var loopIdx int
-		for i, t := range bt {
-			if cursor == uint(t) {
-				loopIdx = i + 1
-				break
-			}
-		}
-		if loopIdx != 0 {
-			fmt.Printf("loop%d:\n", loopIdx-1)
+		targetIdx := branchTargetForAddr(cursor)
+		if targetIdx != -1 {
+			fmt.Printf("loop%d:\n", targetIdx)
 		}
 
 		b := program[cursor]

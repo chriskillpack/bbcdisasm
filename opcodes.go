@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -266,6 +267,8 @@ var (
 		0x232: "IND2V",
 		0x234: "IND3V",
 	}
+
+	branchTargets = []int{}
 )
 
 // Returns true if this opcode is a branch
@@ -277,6 +280,45 @@ func (o *opcode) isBranch() bool {
 	}
 
 	return false
+}
+
+// If addr matches a branch target return it's index in the
+// targets array, -1 if no match
+func branchTargetForAddr(addr uint) int {
+	for i, bt := range branchTargets {
+		if addr == uint(bt) {
+			return i
+		}
+	}
+
+	return -1
+}
+
+func findBranchTargets(program []uint8, maxBytes, offset uint) {
+	branchTargets = []int{}
+
+	cursor := offset
+	for cursor < (offset + maxBytes) {
+		b := program[cursor]
+
+		if op, ok := OpCodesMap[b]; ok {
+			if op.isBranch() {
+				// This is ugly but it will do for now
+				instructions := program[cursor : cursor+op.length]
+
+				offset := int(instructions[1]) + 2 // All branches are 2 bytes long
+				if offset > 127 {
+					offset = offset - 256
+				}
+				branchTargets = append(branchTargets, int(cursor+uint(offset)))
+			}
+			cursor += op.length
+		} else {
+			cursor++
+		}
+	}
+
+	sort.Ints(branchTargets)
 }
 
 func genImmediate(bytes []byte, _ uint) string {
@@ -345,7 +387,15 @@ func genBranch(bytes []byte, cursor uint) string {
 		offset = offset - 256
 		sign = ""
 	}
-	return fmt.Sprintf("%s%d  (0x%04X)", sign, offset, cursor+uint(offset))
+	targetAddr := cursor + uint(offset)
+
+	targetIdx := branchTargetForAddr(targetAddr)
+	if targetIdx != -1 {
+		labelName := fmt.Sprintf("loop%d", targetIdx)
+		return fmt.Sprintf("%s%d  (%s,0x%04X)", sign, offset, labelName, targetAddr)
+	} else {
+		return fmt.Sprintf("%s%d  (0x%04X)", sign, offset, targetAddr)
+	}
 }
 
 func genAccumulator([]byte, uint) string {
