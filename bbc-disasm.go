@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 )
 
 // Acorn DFS disk image
@@ -29,6 +29,10 @@ type catalog struct {
 	startSector int
 }
 
+var (
+	loadAddress = 0
+)
+
 func disassemble(program []uint8, maxBytes, offset uint) {
 	// First pass through program is to find the location
 	// of any branches. These will be marked as labels in
@@ -46,7 +50,7 @@ func disassemble(program []uint8, maxBytes, offset uint) {
 
 		b := program[cursor]
 
-		fmt.Printf("0x%04X: ", cursor)
+		fmt.Printf("0x%04X: ", cursor+uint(loadAddress))
 		if op, ok := OpCodesMap[b]; ok {
 			instructions := program[cursor : cursor+op.length]
 			s := op.decode(instructions, cursor)
@@ -268,7 +272,15 @@ func main() {
 					}
 				}
 
+				loadAddress = c.Int("loadaddr")
 				return disasmFile(file, offset, length)
+			},
+			Flags: []cli.Flag{
+				cli.IntFlag{
+					Name:  "loadaddr",
+					Value: 0,
+					Usage: "load address for the code",
+				},
 			},
 		},
 	}
