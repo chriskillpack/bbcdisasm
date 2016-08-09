@@ -392,9 +392,9 @@ func genBranch(bytes []byte, cursor uint) string {
 	targetIdx := branchTargetForAddr(targetAddr)
 	if targetIdx != -1 {
 		labelName := fmt.Sprintf("loop%d", targetIdx)
-		return fmt.Sprintf("%s%d  (%s,0x%04X)", sign, offset, labelName, targetAddr+uint(loadAddress))
+		return fmt.Sprintf("%s%d  (%s,$%04X)", sign, offset, labelName, targetAddr+uint(loadAddress))
 	} else {
-		return fmt.Sprintf("%s%d  (0x%04X)", sign, offset, targetAddr+uint(loadAddress))
+		return fmt.Sprintf("%s%d  ($%04X)", sign, offset, targetAddr+uint(loadAddress))
 	}
 }
 

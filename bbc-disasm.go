@@ -50,7 +50,7 @@ func disassemble(program []uint8, maxBytes, offset uint) {
 
 		b := program[cursor]
 
-		fmt.Printf("0x%04X: ", cursor+uint(loadAddress))
+		fmt.Printf("$%04X: ", cursor+uint(loadAddress))
 		if op, ok := OpCodesMap[b]; ok {
 			instructions := program[cursor : cursor+op.length]
 			s := op.decode(instructions, cursor)
@@ -58,7 +58,7 @@ func disassemble(program []uint8, maxBytes, offset uint) {
 			cursor += op.length
 		} else {
 			// Gracefully handle unrecognized opcodes
-			fmt.Printf("0x%02X\n", b)
+			fmt.Printf("$%02X\n", b)
 			cursor++
 		}
 	}
