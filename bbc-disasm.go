@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 
@@ -66,7 +67,7 @@ func disassemble(program []uint8, maxBytes, offset uint) {
 
 func listDfs(file string) error {
 	if data, err := ioutil.ReadFile(file); err != nil {
-		fmt.Printf("Error reading %s", file)
+		fmt.Printf("Error reading %s\n", file)
 		return err
 	} else {
 		img := parseDfs(data)
@@ -123,28 +124,44 @@ func listImage(image diskImage) {
 	}
 }
 
-func extractFromDfs(file, entry, outName string) error {
+func extractFromDfs(file, entry, outDir string) error {
 	var data []byte
 	var err error
 
 	if data, err = ioutil.ReadFile(file); err != nil {
-		fmt.Printf("Error reading %s", file)
+		fmt.Printf("Error reading %s\n", file)
 		return err
 	}
 
 	img := parseDfs(data)
+
+	// Ensure output directory exists
+	if outDir != "" {
+		var fi os.FileInfo
+		fi, err = os.Stat(outDir)
+		if err != nil {
+			if os.IsNotExist(err) {
+				err = os.Mkdir(outDir, os.ModePerm)
+				if err != nil {
+					return err
+				}
+			} else {
+				return err
+			}
+		} else {
+			if !fi.IsDir() {
+				return fmt.Errorf("Output path '%s' exists but is not a directory", outDir)
+			}
+		}
+	}
+
 	for _, f := range img.files {
 		if f.filename == entry || entry == "" {
 			// Retrieve data contents
 			offset := f.startSector * 256
 			d := data[offset:(offset + f.length)]
 
-			var ofn string
-			if outName == "" {
-				ofn = f.filename
-			} else {
-				ofn = outName
-			}
+			ofn := path.Join(outDir, f.filename)
 			if err := ioutil.WriteFile(ofn, d, 0644); err != nil {
 				return err
 			}
@@ -208,20 +225,20 @@ func main() {
 			Name:      "extract",
 			Aliases:   []string{"x"},
 			Usage:     "Extract file from DFS disk image",
-			ArgsUsage: "image [entry] [outName]",
+			ArgsUsage: "image [entry] [outDir]",
 			Action: func(c *cli.Context) error {
 				args := c.Args()
 				if len(args) < 1 {
 					return cli.NewExitError("Insufficient arguments", 1)
 				}
-				var entry, outName string
+				var entry, outDir string
 				if len(args) >= 2 {
 					entry = args[1]
 				}
 				if len(args) >= 3 {
-					outName = args[2]
+					outDir = args[2]
 				}
-				if err := extractFromDfs(args[0], entry, outName); err != nil {
+				if err := extractFromDfs(args[0], entry, outDir); err != nil {
 					return cli.NewExitError("Could not extract file from image", 1)
 				}
 				return nil

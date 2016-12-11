@@ -15,7 +15,7 @@ $ go build
 List the contents of a DFS image, in this case Exile one of my favorite BBC B games and an amazing technical achievement in 32Kb of RAM.
 
 ```bash
-$ bbc-disasm list Exile.ssd
+$ bbc-disasm list images/Exile.ssd
 Disk Title  EXILE
 Num Files   7
 Num Sectors 800
@@ -34,19 +34,23 @@ EXILE    1A80   00033000 00034A10   2
 
 ### Extract a file from the disk image
 
-Let's extract the EXILE program from the Exile.ssd image
+Let's extract the EXILE program from the Exile.ssd image saving it in the current directory as EXILE
 
 ```bash
-$ bbc-disasm extract Exile.ssd EXILE ex.out
+$ bbc-disasm extract images/Exile.ssd EXILE
 ```
 
-Or extract all the files from the image. The extracted images are written to the current directory.
+Or we can extract all the files from the image to the current directory
 
 ```bash
-$ bbc-disasm extract Exile.ssd
+$ bbc-disasm extract images/Exile.ssd
 ```
 
-TODO: Support for output directories
+To extract all files to subdirectory `out`
+
+```bash
+$ bbc-disasm extract images/Exile.ssd "" out
+```
 
 ### Disassemble a file
 
