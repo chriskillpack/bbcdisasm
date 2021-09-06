@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-type decodeFunc func(bytes []byte, cursor uint) (out string)
+type decodeFunc func(bytes []byte, cursor uint) string
 
 type opcode struct {
 	length uint   // number of bytes include opcode
@@ -15,9 +15,9 @@ type opcode struct {
 }
 
 var (
-	// Op Codes from http://www.6502.org/tutorials/6502opcodes.html
-	// Some instructions from https://github.com/mattgodbolt/jsbeeb/blob/master/6502.opcodes.js
-	//   ANC, SLO, SRE
+	// OpCodesMap maps from first instruction opcode byte to 6502 instruction
+	// Most opcodes from http://www.6502.org/tutorials/6502opcodes.html
+	// ANC, SLO, SRE from https://github.com/mattgodbolt/jsbeeb/blob/master/6502.opcodes.js
 	OpCodesMap = map[byte]opcode{
 		0x69: {2, "ADC", genImmediate},
 		0x65: {2, "ADC", genZeroPage},
@@ -375,8 +375,7 @@ func genIndirectY(bytes []byte, _ uint) string {
 }
 
 func genBranch(bytes []byte, cursor uint) string {
-	// TODO: Correctly handle branch address calculation
-	// http://www.6502.org/tutorials/6502opcodes.html
+	// From http://www.6502.org/tutorials/6502opcodes.html
 	// "When calculating branches a forward branch of 6 skips the following 6
 	// bytes so, effectively the program counter points to the address that is 8
 	// bytes beyond the address of the branch opcode; and a backward branch of $FA
@@ -389,13 +388,16 @@ func genBranch(bytes []byte, cursor uint) string {
 	}
 	targetAddr := cursor + uint(offset)
 
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%s%d  (", sign, offset))
+
 	targetIdx := branchTargetForAddr(targetAddr)
 	if targetIdx != -1 {
-		labelName := fmt.Sprintf("loop%d", targetIdx)
-		return fmt.Sprintf("%s%d  (%s,$%04X)", sign, offset, labelName, targetAddr+uint(loadAddress))
-	} else {
-		return fmt.Sprintf("%s%d  ($%04X)", sign, offset, targetAddr+uint(loadAddress))
+		sb.WriteString(fmt.Sprintf("loop_%d", targetIdx))
+		sb.WriteString(",")
 	}
+	sb.WriteString(fmt.Sprintf("$%04X)", targetAddr+uint(loadAddress)))
+	return sb.String()
 }
 
 func genAccumulator([]byte, uint) string {

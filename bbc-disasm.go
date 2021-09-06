@@ -28,13 +28,15 @@ type catalog struct {
 	loadAddr    int
 	execAddr    int
 	startSector int
+	attr        byte
 }
 
 var (
 	loadAddress = 0
 )
 
-func disassemble(program []uint8, maxBytes, offset uint) {
+// Using https://twitter.com/KevEdwardsRetro/status/996474534730567681 as an output template
+func disassemble(program []byte, maxBytes, offset uint) {
 	// First pass through program is to find the location
 	// of any branches. These will be marked as labels in
 	// the output.
@@ -46,42 +48,59 @@ func disassemble(program []uint8, maxBytes, offset uint) {
 	for cursor < (offset + maxBytes) {
 		targetIdx := branchTargetForAddr(cursor)
 		if targetIdx != -1 {
-			fmt.Printf("loop%d:\n", targetIdx)
+			fmt.Printf("loop_%d:\n", targetIdx)
 		}
 
+		// All instructions are at least one byte long and the first
+		// byte is sufficient to identify the instruction
 		b := program[cursor]
 
-		fmt.Printf("$%04X: ", cursor+uint(loadAddress))
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("$%04X ", cursor+uint(loadAddress)))
 		if op, ok := OpCodesMap[b]; ok {
-			instructions := program[cursor : cursor+op.length]
-			s := op.decode(instructions, cursor)
-			fmt.Printf("%s %v\n", op.name, s)
+			// The valid instruction will be printed to a line with format
+			//
+			// address [instruction op codes ...] decoded instruction
+			opcodes := program[cursor : cursor+op.length]
+
+			var out []string
+			for _, i := range opcodes {
+				out = append(out, fmt.Sprintf("%02X", i))
+			}
+			sb.WriteString(strings.Join(out, " "))
+			sb.WriteString("\t")
+			sb.WriteString(op.name)
+
+			sb.WriteString(fmt.Sprintf(" %s", op.decode(opcodes, cursor)))
 			cursor += op.length
 		} else {
 			// Gracefully handle unrecognized opcodes
-			fmt.Printf("$%02X\n", b)
+			sb.WriteString(fmt.Sprintf("$%02X", b))
 			cursor++
 		}
+		fmt.Println(sb.String())
 	}
 }
 
 func listDfs(file string) error {
-	if data, err := ioutil.ReadFile(file); err != nil {
+	data, err := ioutil.ReadFile(file)
+	if err != nil {
 		fmt.Printf("Error reading %s\n", file)
 		return err
-	} else {
-		img := parseDfs(data)
-		listImage(img)
 	}
 
+	img := parseDfs(data)
+	listImage(img)
 	return nil
 }
 
-// http://mdfs.net/Docs/Comp/Disk/Format/DFS
+// Resources
+//   http://mdfs.net/Docs/Comp/Disk/Format/DFS
+//   http://chrisacorns.computinghistory.org.uk/docs/Acorn/Manuals/Acorn_DiscSystemUGI2.pdf
 func parseDfs(dfs []byte) diskImage {
 	image := diskImage{}
 
-	image.title = strings.TrimRight(string(dfs[0:8])+string(dfs[0x100:0x103]), "")
+	image.title = strings.TrimRight(string(dfs[0:8])+string(dfs[0x100:0x104]), "")
 
 	nFiles := int(dfs[0x105]) / 8
 
@@ -92,22 +111,38 @@ func parseDfs(dfs []byte) diskImage {
 
 	// Read file catalog entries
 	for i := 0; i < nFiles; i++ {
-		var offset int
+		file := &image.files[i]
 
 		// Read out the filename
+		var offset int
 		offset = 0x008 + i*8
-		image.files[i].filename = strings.TrimRight(string(dfs[offset:offset+6]), " ")
-		image.files[i].dir = string(dfs[offset+7])
+		file.filename, file.attr = readFilename(dfs[offset : offset+7])
+		file.dir = string(dfs[offset+7])
 
 		// Read file info
 		offset = 0x108 + i*8
-		image.files[i].length = int(dfs[offset+4]) + int(dfs[offset+5])*256 + int(dfs[offset+6]&48)*4096
-		image.files[i].loadAddr = int(dfs[offset+0]) + int(dfs[offset+1])*256 + int(dfs[offset+6]&12)*16384
-		image.files[i].execAddr = int(dfs[offset+2]) + int(dfs[offset+3])*256 + int(dfs[offset+6]&192)*1024
-		image.files[i].startSector = int(dfs[offset+7]) + int(dfs[offset+6]&3)*256
+		file.length = int(dfs[offset+4]) + int(dfs[offset+5])*256 + int(dfs[offset+6]&0b110000)*4096
+		file.loadAddr = int(dfs[offset+0]) + int(dfs[offset+1])*256 + int(dfs[offset+6]&0b1100)*16384
+		file.execAddr = int(dfs[offset+2]) + int(dfs[offset+3])*256 + int(dfs[offset+6]&0b11000000)*1024
+		file.startSector = int(dfs[offset+7]) + int(dfs[offset+6]&0b11)*256
 	}
 
 	return image
+}
+
+func readFilename(block []byte) (string, byte) {
+	if len(block) < 7 {
+		panic("block is too short")
+	}
+
+	name := make([]byte, len(block))
+	var attr byte
+	for i, v := range block {
+		attr |= (v & 0x80) >> (7 - i)
+		name[i] = v & 0x7f
+	}
+
+	return strings.TrimRight(string(name), " "), attr
 }
 
 func listImage(image diskImage) {
@@ -117,10 +152,9 @@ func listImage(image diskImage) {
 	fmt.Printf("Boot Option %d\n", image.bootOpt)
 	fmt.Printf("Disk Cycle  0x%0X\n\n", image.cycle)
 
-	fmt.Println("Filename Length LoadAddr ExecAddr Sector")
-	for i, _ := range image.files {
-		file := &image.files[i]
-		fmt.Printf("%-6s   %04X   %08X %08X %3d\n", file.filename, file.length, file.loadAddr, file.execAddr, file.startSector)
+	fmt.Println("Filename  Length LoadAddr ExecAddr Sector")
+	for _, file := range image.files {
+		fmt.Printf("%-7s   %04X   %08X %08X %3d\n", file.filename, file.length, file.loadAddr, file.execAddr, file.startSector)
 	}
 }
 
@@ -137,20 +171,19 @@ func extractFromDfs(file, entry, outDir string) error {
 
 	// Ensure output directory exists
 	if outDir != "" {
-		var fi os.FileInfo
-		fi, err = os.Stat(outDir)
+		fi, err := os.Stat(outDir)
 		if err != nil {
 			if os.IsNotExist(err) {
 				err = os.Mkdir(outDir, os.ModePerm)
 				if err != nil {
-					return err
+					return fmt.Errorf("could not create directory %s: %q", outDir, err)
 				}
 			} else {
 				return err
 			}
 		} else {
 			if !fi.IsDir() {
-				return fmt.Errorf("Output path '%s' exists but is not a directory", outDir)
+				return fmt.Errorf("output path %s is not a directory", outDir)
 			}
 		}
 	}
@@ -172,10 +205,8 @@ func extractFromDfs(file, entry, outDir string) error {
 }
 
 func disasmFile(file string, offset, length int64) error {
-	var data []byte
-	var err error
-
-	if data, err = ioutil.ReadFile(file); err != nil {
+	data, err := ioutil.ReadFile(file)
+	if err != nil {
 		fmt.Printf("Error reading %s", file)
 		return err
 	}
@@ -185,14 +216,14 @@ func disasmFile(file string, offset, length int64) error {
 }
 
 func fileLength(filename string) (int64, error) {
-	var f *os.File
-	var err error
-	if f, err = os.Open(filename); err != nil {
+	f, err := os.Open(filename)
+	if err != nil {
 		return 0, err
 	}
+	defer f.Close()
 
-	var fi os.FileInfo
-	if fi, err = f.Stat(); err != nil {
+	fi, err := f.Stat()
+	if err != nil {
 		return 0, err
 	}
 
@@ -256,9 +287,8 @@ func main() {
 				}
 				file := args[0]
 
-				var fileLen int64
-				var err error
-				if fileLen, err = fileLength(file); err != nil {
+				fileLen, err := fileLength(file)
+				if err != nil {
 					// TODO: Handle error
 					return err
 				}
