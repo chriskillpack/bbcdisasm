@@ -4,9 +4,10 @@ A work in progress disassembler for 6502 programs and Acorn DFS disk image extra
 
 ## Build
 
+[Requires a version of Go that supports modules]
+
 ```bash
-$ go get github.com/urfave/cli
-$ go build
+$ go build .
 ```
 
 ## Usage
@@ -60,24 +61,24 @@ Let's disassemble the first non-BASIC program in the Exile disk image, EXILE, st
 
 ```bash
 $ bbc-disasm disasm --loadaddr 0x3000 EXILE 0x1A00
-loop0:
-0x4A00: LDA $4948,Y
-0x4A03: BMI +8  (loop1,0x4A0B)
-0x4A05: JSR $FFEE  (OSWRCH)
-0x4A08: INY
-0x4A09: BNE -9  (loop0,0x4A00)
-loop1:
-0x4A0B: RTS
-0x4A0C: BRK
-0x4A0D: BRK
-0x4A0E: BRK
-0x4A0F: BRK
-0x4A10: LDA #$C8
-0x4A12: LDX #$03
-0x4A14: LDY #$00
-0x4A16: JSR $FFF4  (OSBYTE)
+loop_0:
+$4A00 B9 48 49	LDA $4948,Y
+$4A03 30 06	BMI +8  (loop_1,$4A0B)
+$4A05 20 EE FF	JSR $FFEE  (OSWRCH)
+$4A08 C8        INY
+$4A09 D0 F5	    BNE -9  (loop_0,$4A00)
+loop_1:
+$4A0B 60        RTS
+$4A0C 00        BRK
+$4A0D 00        BRK
+$4A0E 00        BRK
+$4A0F 00        BRK
+$4A10 A9 C8     LDA #$C8
+$4A12 A2 03     LDX #$03
+$4A14 A0 00     LDY #$00
+$4A16 20 F4 FF	JSR $FFF4  (OSBYTE)
 ...
-0x4A7E: LSR $54
+$4A7E 46 54     LSR $54
 ```
 
 The `--loadaddr` options instructs the disassembler to 'relocate' the program to a different memory address. This is to match the actual memory address DFS will place the file contents. TODO: Apply loadaddr to the execution address.
@@ -86,9 +87,10 @@ By default `disasm` will disassemble the entire file though this can be limited 
 
 ```bash
 $ bbc-disasm d --loadaddr 0x3000 exile/EXILE 0x1A00 8
-0x4A00: LDA $4948,Y
-0x4A03: BMI +8  (loop0,0x4A0B)
-0x4A05: JSR $FFEE  (OSWRCH)
+loop_0:
+$4A00 B9 48 49	LDA $4948,Y
+$4A03 30 06	BMI +8  (loop_1,$4A0B)
+$4A05 20 EE FF	JSR $FFEE  (OSWRCH)
 ```
 
 ## TODO
