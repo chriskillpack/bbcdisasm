@@ -1,4 +1,4 @@
-package main
+package bbcdisasm
 
 import (
 	"fmt"
@@ -13,6 +13,8 @@ type opcode struct {
 	name   string // human readable instruction 'name' of opcode
 	decode decodeFunc
 }
+
+var branchOffset uint // Adjustment to make to absolute branch locations
 
 var (
 	// OpCodesMap maps from first instruction opcode byte to 6502 instruction
@@ -396,7 +398,7 @@ func genBranch(bytes []byte, cursor uint) string {
 		sb.WriteString(fmt.Sprintf("loop_%d", targetIdx))
 		sb.WriteString(",")
 	}
-	sb.WriteString(fmt.Sprintf("$%04X)", targetAddr+uint(loadAddress)))
+	sb.WriteString(fmt.Sprintf("$%04X)", targetAddr+uint(branchOffset)))
 	return sb.String()
 }
 
