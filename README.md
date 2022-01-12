@@ -33,24 +33,24 @@ ExileB    6080   00031200 00037200  29
 EXILE     1A80   00033000 00034A10   2
 ```
 
-### Extract a file from the disk image
+### Extract file(s) from the disk image
 
-Let's extract the EXILE program from the Exile.ssd image saving it in the current directory as EXILE
+Let's extract EXILE program from the Exile.ssd image into the current directory
 
 ```bash
 $ bbc-disasm extract images/Exile.ssd EXILE
 ```
 
-Or we can extract all the files from the image to the current directory
+Or we can extract all the files from an image, again into the current directory
 
 ```bash
 $ bbc-disasm extract images/Exile.ssd
 ```
 
-To extract all files to subdirectory `out`
+To extract only EXILE and ExileL to subdirectory `out`
 
 ```bash
-$ bbc-disasm extract images/Exile.ssd "" out
+$ bbc-disasm extract --outdir out images/Exile.ssd EXILE ExileL
 ```
 
 ### Disassemble a file
