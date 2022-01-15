@@ -84,7 +84,7 @@ func ParseDFS(dfs []byte) *DiskImage {
 	img := &DiskImage{}
 
 	nfiles := int(dfs[0x105]) / 8
-	img.Title = strings.TrimRight(string(dfs[0:8])+string(dfs[0x100:0x104]), "")
+	img.Title = strings.TrimRight(string(dfs[0:8])+string(dfs[0x100:0x104]), "\000")
 	img.Sectors = int(dfs[0x107]) + int(dfs[0x106]&3)*256
 	img.BootOpt = int(dfs[0x106]&48) >> 4
 	img.Cycle = int(dfs[0x104])
