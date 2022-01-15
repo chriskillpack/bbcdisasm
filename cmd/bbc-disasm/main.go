@@ -162,8 +162,7 @@ func main() {
 
 				fileLen, err := fileLength(file)
 				if err != nil {
-					// TODO: Handle error
-					return err
+					return cli.Exit(err, 1)
 				}
 
 				var offset int64
@@ -192,8 +191,8 @@ func main() {
 					}
 				}
 
-				loadAddress := c.Int("loadaddr")
-				return disasmFile(file, offset, length, uint(loadAddress))
+				loadAddress := uint(c.Int("loadaddr"))
+				return disasmFile(file, offset, length, loadAddress)
 			},
 			Flags: []cli.Flag{
 				&cli.IntFlag{
