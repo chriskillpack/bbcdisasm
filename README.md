@@ -55,30 +55,37 @@ $ bbc-disasm extract --outdir out images/Exile.ssd EXILE ExileL
 
 ### Disassemble a file
 
-This is a simple 2-pass 6502 byte-code disassembler that has light knowledge of the BBC Micro memory map and will mark up some absolute memory address, e.g. that `0xFFF7` is the `OSCLI` entry point.
+This is a simple 2-pass 6502 byte-code disassembler that uses light knowledge of the BBC Micro memory map to replace well known memory address with their names, e.g. `0xFFF7` is the `OSCLI` entry point.
 
 Let's disassemble the first non-BASIC program in the Exile disk image, EXILE, starting from it's execution point. The output below shows loop targets and identification of OS entry point addresses.
 
 ```bash
-$ bbc-disasm disasm --loadaddr 0x3000 EXILE 0x1A00
-loop_0:
-$4A00 B9 48 49	LDA $4948,Y
-$4A03 30 06	BMI +8  (loop_1,$4A0B)
-$4A05 20 EE FF	JSR $FFEE  (OSWRCH)
-$4A08 C8        INY
-$4A09 D0 F5	    BNE -9  (loop_0,$4A00)
-loop_1:
-$4A0B 60        RTS
-$4A0C 00        BRK
-$4A0D 00        BRK
-$4A0E 00        BRK
-$4A0F 00        BRK
-$4A10 A9 C8     LDA #$C8
-$4A12 A2 03     LDX #$03
-$4A14 A0 00     LDY #$00
-$4A16 20 F4 FF	JSR $FFF4  (OSBYTE)
+$ bbc-disasm disasm --loadaddr 0x3000 EXILE 0x1A10
 ...
-$4A7E 46 54     LSR $54
+CODE% = &3000
+
+ LDA #&C8                \ &4A10 A9 C8
+ LDX #&03                \ &4A12 A2 03
+ LDY #&00                \ &4A14 A0 00
+ JSR OSBYTE              \ &4A16 20 F4 FF
+ LDY #&00                \ &4A19 A0 00
+ JSR &4A00               \ &4A1B 20 00 4A
+ JSR &4980               \ &4A1E 20 80 49
+ LDY #&28                \ &4A21 A0 28
+ JSR &4A00               \ &4A23 20 00 4A
+ LDA #&15                \ &4A26 A9 15
+ LDX #&00                \ &4A28 A2 00
+ JSR OSBYTE              \ &4A2A 20 F4 FF
+ LDA #&81                \ &4A2D A9 81
+ LDX #&20                \ &4A2F A2 20
+ LDY #&03                \ &4A31 A0 03
+ JSR OSBYTE              \ &4A33 20 F4 FF
+ LDA #&00                \ &4A36 A9 00
+ LDY #&0F                \ &4A38 A0 0F
+.loop_0
+ CPY &0DBC               \ &4A3A CC BC 0D
+ BEQ loop_1              \ &4A3D F0 03
+...
 ```
 
 The `--loadaddr` options instructs the disassembler to 'relocate' the program to a different memory address. This is to match the actual memory address DFS will place the file contents. TODO: Apply loadaddr to the execution address.
@@ -86,14 +93,14 @@ The `--loadaddr` options instructs the disassembler to 'relocate' the program to
 By default `disasm` will disassemble the entire file though this can be limited by the optional final length argument
 
 ```bash
-$ bbc-disasm d --loadaddr 0x3000 exile/EXILE 0x1A00 8
-loop_0:
-$4A00 B9 48 49	LDA $4948,Y
-$4A03 30 06	BMI +8  (loop_1,$4A0B)
-$4A05 20 EE FF	JSR $FFEE  (OSWRCH)
+$ bbc-disasm d --loadaddr 0x3000 exile/EXILE 0x1A10 8
+...
+ LDA #&C8                \ &4A10 A9 C8
+ LDX #&03                \ &4A12 A2 03
+ LDY #&00                \ &4A14 A0 00
+ JSR OSBYTE              \ &4A16 20 F4 FF
 ```
 
 ## TODO
 
-* Cleaner disassembler output
 * Improved BBC Micro memory map support in the disassembler

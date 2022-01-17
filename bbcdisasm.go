@@ -1,8 +1,11 @@
 package bbcdisasm
 
 import (
+	"bytes"
 	"fmt"
+	"os"
 	"strings"
+	"text/template"
 )
 
 // DiskImage represents an Acorn DFS disk image
@@ -34,6 +37,13 @@ func Disassemble(program []byte, maxBytes, offset, loadAddr uint) {
 	// the output.
 	findBranchTargets(program, maxBytes, offset)
 
+	distem, _ := template.New("disasm").Parse(disasmHeader)
+	data := struct {
+		OSmap    map[uint]string
+		LoadAddr uint
+	}{addressToOsCallName, loadAddr}
+	distem.Execute(os.Stdout, data)
+
 	branchOffset = loadAddr // gross. setting a package level var
 
 	// Second pass through program is to decode each instruction
@@ -42,7 +52,7 @@ func Disassemble(program []byte, maxBytes, offset, loadAddr uint) {
 	for cursor < (offset + maxBytes) {
 		targetIdx := branchTargetForAddr(cursor)
 		if targetIdx != -1 {
-			fmt.Printf("loop_%d:\n", targetIdx)
+			fmt.Printf(".loop_%d\n", targetIdx)
 		}
 
 		// All instructions are at least one byte long and the first
@@ -50,26 +60,29 @@ func Disassemble(program []byte, maxBytes, offset, loadAddr uint) {
 		b := program[cursor]
 
 		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("$%04X ", cursor+uint(branchOffset)))
 		if op, ok := OpCodesMap[b]; ok {
 			// The valid instruction will be printed to a line with format
 			//
 			// address [instruction op codes ...] decoded instruction
 			opcodes := program[cursor : cursor+op.length]
 
+			sb.WriteString(" " + op.name)
+			sb.WriteString(fmt.Sprintf(" %s", op.decode(opcodes, cursor)))
+			if sb.Len() < 25 {
+				// 25 -1 (for leading space below) -1 (so that \ is at col 25)
+				sb.Write(bytes.Repeat([]byte{' '}, 23-sb.Len()))
+			}
+			sb.WriteString(fmt.Sprintf(" \\ &%04X ", cursor+uint(branchOffset)))
+
 			var out []string
 			for _, i := range opcodes {
 				out = append(out, fmt.Sprintf("%02X", i))
 			}
 			sb.WriteString(strings.Join(out, " "))
-			sb.WriteString("\t")
-			sb.WriteString(op.name)
-
-			sb.WriteString(fmt.Sprintf(" %s", op.decode(opcodes, cursor)))
 			cursor += op.length
 		} else {
 			// Gracefully handle unrecognized opcodes
-			sb.WriteString(fmt.Sprintf("$%02X", b))
+			sb.WriteString(fmt.Sprintf(" EQUB &%02X", b))
 			cursor++
 		}
 		fmt.Println(sb.String())
@@ -127,3 +140,19 @@ func readFilename(block []byte) (string, byte) {
 
 	return strings.TrimRight(string(name), " "), attr
 }
+
+var disasmHeader = `\ ******************************************************************************
+\
+\ This disassembly was produced by bbc-disasm
+\
+\ ******************************************************************************
+
+{{ range $addr, $os := .OSmap }}
+  {{- printf "%-6s" $os }} = {{ printf "&%0X" $addr }}
+{{ end }}
+{{ if .LoadAddr }}CODE% = {{ printf "&%X" .LoadAddr }}
+
+ORG CODE%
+{{ end }}
+
+`

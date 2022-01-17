@@ -3,7 +3,6 @@ package bbcdisasm
 import (
 	"fmt"
 	"sort"
-	"strings"
 )
 
 type decodeFunc func(bytes []byte, cursor uint) string
@@ -324,56 +323,56 @@ func findBranchTargets(program []uint8, maxBytes, offset uint) {
 }
 
 func genImmediate(bytes []byte, _ uint) string {
-	return fmt.Sprintf("#$%02X", bytes[1])
+	return fmt.Sprintf("#&%02X", bytes[1])
 }
 
 func genZeroPage(bytes []byte, _ uint) string {
-	return fmt.Sprintf("$%02X", bytes[1])
+	return fmt.Sprintf("&%02X", bytes[1])
 }
 
 func genZeroPageX(bytes []byte, _ uint) string {
-	return fmt.Sprintf("$%02X,X", bytes[1])
+	return fmt.Sprintf("&%02X,X", bytes[1])
 }
 
 func genZeroPageY(bytes []byte, _ uint) string {
-	return fmt.Sprintf("$%02X,Y", bytes[1])
+	return fmt.Sprintf("&%02X,Y", bytes[1])
 }
 
 func genAbsolute(bytes []byte, _ uint) string {
 	val := (uint(bytes[2]) << 8) + uint(bytes[1])
-	return fmt.Sprintf("$%04X", val)
+	return fmt.Sprintf("&%04X", val)
 }
 
 func genAbsoluteOsCall(bytes []byte, _ uint) string {
 	val := (uint(bytes[2]) << 8) + uint(bytes[1])
-	out := fmt.Sprintf("$%04X", val)
 	if osCall, ok := addressToOsCallName[val]; ok {
-		return strings.Join([]string{out, "  (", osCall, ")"}, "")
+		return osCall
+	} else {
+		return fmt.Sprintf("&%04X", val)
 	}
-	return out
 }
 
 func genAbsoluteX(bytes []byte, _ uint) string {
 	val := (uint(bytes[2]) << 8) + uint(bytes[1])
-	return fmt.Sprintf("$%04X,X", val)
+	return fmt.Sprintf("&%04X,X", val)
 }
 
 func genAbsoluteY(bytes []byte, _ uint) string {
 	val := (uint(bytes[2]) << 8) + uint(bytes[1])
-	return fmt.Sprintf("$%04X,Y", val)
+	return fmt.Sprintf("&%04X,Y", val)
 }
 
 func genIndirect(bytes []byte, _ uint) string {
 	val := (uint(bytes[2]) << 8) + uint(bytes[1])
-	return fmt.Sprintf("($%04X)", val)
+	return fmt.Sprintf("(&%04X)", val)
 }
 
 func genIndirectX(bytes []byte, _ uint) string {
-	return fmt.Sprintf("($%02X,X)", bytes[1])
+	return fmt.Sprintf("(&%02X,X)", bytes[1])
 }
 
 func genIndirectY(bytes []byte, _ uint) string {
-	return fmt.Sprintf("($%02X),Y", bytes[1])
+	return fmt.Sprintf("(&%02X),Y", bytes[1])
 }
 
 func genBranch(bytes []byte, cursor uint) string {
@@ -383,23 +382,17 @@ func genBranch(bytes []byte, cursor uint) string {
 	// bytes beyond the address of the branch opcode; and a backward branch of $FA
 	// (256-6) goes to an address 4 bytes before the branch instruction."
 	offset := int(bytes[1]) + 2 // All branches are 2 bytes long
-	sign := "+"
 	if offset > 127 {
 		offset = offset - 256
-		sign = ""
 	}
 	targetAddr := cursor + uint(offset)
-
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s%d  (", sign, offset))
+	// TODO: Explore branch relative offset in the end of line comment
 
 	targetIdx := branchTargetForAddr(targetAddr)
-	if targetIdx != -1 {
-		sb.WriteString(fmt.Sprintf("loop_%d", targetIdx))
-		sb.WriteString(",")
+	if targetIdx == -1 {
+		panic("Target address was not found in first pass")
 	}
-	sb.WriteString(fmt.Sprintf("$%04X)", targetAddr+uint(branchOffset)))
-	return sb.String()
+	return fmt.Sprintf("loop_%d", targetIdx)
 }
 
 func genAccumulator([]byte, uint) string {
