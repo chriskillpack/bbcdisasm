@@ -235,10 +235,14 @@ var (
 		0xFFBF: "OSEVEN",
 		0xFFC2: "GSINIT",
 		0xFFC5: "GSREAD",
-		0xFFEE: "OSWRCH",
+		0xFFC8: "NVRDCH", // non-vectored OSRDCH
+		0xFFCB: "NVWRCH", // non-vectored OSWRCH
+		0xFFCE: "OSFIND",
 		0xFFE0: "OSRDCH",
-		0xFFE7: "OSNEWL",
 		0xFFE3: "OSASCI",
+		0xFFE7: "OSNEWL",
+		0xFFEE: "OSWRCH",
+		0xFFF1: "OSWORD",
 		0xFFF4: "OSBYTE",
 		0xFFF7: "OSCLI",
 	}
