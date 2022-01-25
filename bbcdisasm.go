@@ -3,7 +3,7 @@ package bbcdisasm
 import (
 	"bytes"
 	"fmt"
-	"os"
+	"io"
 	"strings"
 	"text/template"
 )
@@ -31,7 +31,7 @@ type Catalog struct {
 // Disassemble prints a 6502 program to stdout
 // loadAddr fixes up addresses to match the load address. Uses
 // https://twitter.com/KevEdwardsRetro/status/996474534730567681 as an output template
-func Disassemble(program []byte, maxBytes, offset, loadAddr uint) {
+func Disassemble(program []byte, maxBytes, offset, loadAddr uint, w io.Writer) {
 	// First pass through program is to find the location
 	// of any branches. These will be marked as labels in
 	// the output.
@@ -42,7 +42,7 @@ func Disassemble(program []byte, maxBytes, offset, loadAddr uint) {
 		OSmap    map[uint]string
 		LoadAddr uint
 	}{addressToOsCallName, loadAddr}
-	distem.Execute(os.Stdout, data)
+	distem.Execute(w, data)
 
 	branchOffset = loadAddr // gross. setting a package level var
 
@@ -52,7 +52,7 @@ func Disassemble(program []byte, maxBytes, offset, loadAddr uint) {
 	for cursor < (offset + maxBytes) {
 		targetIdx := branchTargetForAddr(cursor)
 		if targetIdx != -1 {
-			fmt.Printf(".loop_%d\n", targetIdx)
+			fmt.Fprintf(w, ".loop_%d\n", targetIdx)
 		}
 
 		// All instructions are at least one byte long and the first
@@ -60,32 +60,57 @@ func Disassemble(program []byte, maxBytes, offset, loadAddr uint) {
 		b := program[cursor]
 
 		var sb strings.Builder
-		if op, ok := OpCodesMap[b]; ok {
+		sb.WriteByte(' ')
+
+		op, ok := OpCodesMap[b]
+		if ok && isOpcodeDocumented(op) {
 			// The valid instruction will be printed to a line with format
 			//
 			// address [instruction op codes ...] decoded instruction
 			opcodes := program[cursor : cursor+op.length]
 
-			sb.WriteString(" " + op.name)
-			sb.WriteString(fmt.Sprintf(" %s", op.decode(opcodes, cursor)))
+			sb.WriteString(op.name)
+			sb.WriteByte(' ')
+			sb.WriteString(op.decode(opcodes, cursor))
 			if sb.Len() < 25 {
 				// 25 -1 (for leading space below) -1 (so that \ is at col 25)
 				sb.Write(bytes.Repeat([]byte{' '}, 23-sb.Len()))
 			}
-			sb.WriteString(fmt.Sprintf(" \\ &%04X ", cursor+uint(branchOffset)))
+			sb.WriteString(" \\ ")
 
-			var out []string
+			out := []string{
+				fmt.Sprintf("&%04X", cursor+uint(branchOffset)),
+			}
 			for _, i := range opcodes {
 				out = append(out, fmt.Sprintf("%02X", i))
 			}
 			sb.WriteString(strings.Join(out, " "))
+
 			cursor += op.length
 		} else {
-			// Gracefully handle unrecognized opcodes
-			sb.WriteString(fmt.Sprintf(" EQUB &%02X", b))
-			cursor++
+			bs := []byte{b}
+			if ok {
+				bs = program[cursor : cursor+op.length]
+			}
+
+			var out []string
+			for _, i := range bs {
+				out = append(out, fmt.Sprintf("&%02X", i))
+			}
+			sb.WriteString("EQUB ")
+			sb.WriteString(strings.Join(out, ","))
+
+			if ok {
+				if sb.Len() < 25 {
+					sb.Write(bytes.Repeat([]byte{' '}, 23-sb.Len()))
+				}
+				sb.WriteString(" \\ UD ")
+				sb.WriteString(op.name)
+			}
+			cursor += uint(len(bs))
 		}
-		fmt.Println(sb.String())
+		sb.WriteByte('\n')
+		w.Write([]byte(sb.String()))
 	}
 }
 
@@ -139,6 +164,16 @@ func readFilename(block []byte) (string, byte) {
 	}
 
 	return strings.TrimRight(string(name), " "), attr
+}
+
+func isOpcodeDocumented(op opcode) bool {
+	for _, u := range UndocumentedInstructions {
+		if op.name == u {
+			return false
+		}
+	}
+
+	return true
 }
 
 var disasmHeader = `\ ******************************************************************************

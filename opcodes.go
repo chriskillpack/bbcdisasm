@@ -222,6 +222,11 @@ var (
 		0x8C: {3, "STY", genAbsolute},
 	}
 
+	// Record which instructions are undocumented
+	// This list is not exhaustive and only tracks the undocumented opcodes
+	// that are included in OpCodesMap.
+	UndocumentedInstructions = []string{"ANC", "SRE", "SLO"}
+
 	branchInstructions = []string{"BPL", "BMI", "BVC", "BVS", "BCC", "BCS", "BNE", "BEQ"}
 
 	// Maps absolute addresses to names of BBC MICRO OS calls

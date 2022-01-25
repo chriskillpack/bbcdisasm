@@ -39,7 +39,7 @@ func disasmFile(file string, offset, length int64, loadAddress uint) error {
 		return err
 	}
 
-	bbc.Disassemble(data, uint(length), uint(offset), loadAddress)
+	bbc.Disassemble(data, uint(length), uint(offset), loadAddress, os.Stdout)
 	return nil
 }
 
