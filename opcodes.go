@@ -218,7 +218,7 @@ var (
 		0x8E: {3, "STX", genAbsolute},
 
 		0x84: {2, "STY", genZeroPage},
-		0x94: {2, "STY", genZeroPageY},
+		0x94: {2, "STY", genZeroPageX},
 		0x8C: {3, "STY", genAbsolute},
 	}
 
