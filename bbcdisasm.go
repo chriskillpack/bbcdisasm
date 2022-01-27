@@ -50,8 +50,7 @@ func Disassemble(program []byte, maxBytes, offset, loadAddr uint, w io.Writer) {
 	// and print to stdout.
 	cursor := offset
 	for cursor < (offset + maxBytes) {
-		targetIdx := branchTargetForAddr(cursor)
-		if targetIdx != -1 {
+		if targetIdx, ok := branchTargets[cursor]; ok {
 			fmt.Fprintf(w, ".loop_%d\n", targetIdx)
 		}
 

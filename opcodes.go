@@ -222,8 +222,7 @@ var (
 		0x8C: {3, "STY", genAbsolute},
 	}
 
-	// Record which instructions are undocumented
-	// This list is not exhaustive and only tracks the undocumented opcodes
+	// UndocumentedInstructions is not exhaustive and only tracks the opcodes
 	// that are included in OpCodesMap.
 	UndocumentedInstructions = []string{"ANC", "SRE", "SLO"}
 
@@ -278,7 +277,7 @@ var (
 		0x234: "IND3V",
 	}
 
-	branchTargets = []int{}
+	branchTargets map[uint]int
 )
 
 // Returns true if this opcode is a branch
@@ -292,23 +291,15 @@ func (o *opcode) isBranch() bool {
 	return false
 }
 
-// If addr matches a branch target return it's index in the
-// targets array, -1 if no match
-func branchTargetForAddr(addr uint) int {
-	for i, bt := range branchTargets {
-		if addr == uint(bt) {
-			return i
-		}
-	}
-
-	return -1
-}
-
 func findBranchTargets(program []uint8, maxBytes, offset uint) {
-	branchTargets = []int{}
+	// Track all reachable instructions. That is the address of the first
+	// opcode of each instruction starting at offset and moving forwards.
+	iloc := make(map[uint]bool)
 
+	branchTargets = make(map[uint]int)
 	cursor := offset
 	for cursor < (offset + maxBytes) {
+		iloc[cursor] = true // Reachable instruction
 		b := program[cursor]
 
 		if op, ok := OpCodesMap[b]; ok {
@@ -320,7 +311,11 @@ func findBranchTargets(program []uint8, maxBytes, offset uint) {
 				if offset > 127 {
 					offset = offset - 256
 				}
-				branchTargets = append(branchTargets, int(cursor+uint(offset)))
+
+				targ := cursor + uint(offset)
+				if _, ok := branchTargets[targ]; !ok {
+					branchTargets[targ] = 0 // value will be filled out later
+				}
 			}
 			cursor += op.length
 		} else {
@@ -328,7 +323,27 @@ func findBranchTargets(program []uint8, maxBytes, offset uint) {
 		}
 	}
 
-	sort.Ints(branchTargets)
+	// Reject branch targets that point to unreachable instructions. This can
+	// happen disassembling data and the byte values generate a branch
+	// instruction with a relative address that does not point to the beginning
+	// of a reachable instruction.
+	for k := range branchTargets {
+		if _, ok := iloc[k]; !ok {
+			delete(branchTargets, k)
+		}
+	}
+
+	// Sort branch targets in order of increasing address
+	bt := make([]int, len(branchTargets))
+	i := 0
+	for k := range branchTargets {
+		bt[i] = int(k)
+		i++
+	}
+	sort.Ints(bt)
+	for i, v := range bt {
+		branchTargets[uint(v)] = i
+	}
 }
 
 func genImmediate(bytes []byte, _ uint) string {
@@ -356,9 +371,9 @@ func genAbsoluteOsCall(bytes []byte, _ uint) string {
 	val := (uint(bytes[2]) << 8) + uint(bytes[1])
 	if osCall, ok := addressToOsCallName[val]; ok {
 		return osCall
-	} else {
-		return fmt.Sprintf("&%04X", val)
 	}
+
+	return fmt.Sprintf("&%04X", val)
 }
 
 func genAbsoluteX(bytes []byte, _ uint) string {
@@ -388,18 +403,26 @@ func genBranch(bytes []byte, cursor uint) string {
 	// From http://www.6502.org/tutorials/6502opcodes.html
 	// "When calculating branches a forward branch of 6 skips the following 6
 	// bytes so, effectively the program counter points to the address that is 8
-	// bytes beyond the address of the branch opcode; and a backward branch of $FA
-	// (256-6) goes to an address 4 bytes before the branch instruction."
-	offset := int(bytes[1]) + 2 // All branches are 2 bytes long
+	// bytes beyond the address of the branch opcode; and a backward branch of
+	// $FA (256-6) goes to an address 4 bytes before the branch instruction."
+	offset := int(bytes[1]) // All branches are 2 bytes long
 	if offset > 127 {
 		offset = offset - 256
 	}
+	// Adjust offset to account for the 2 byte behavior from the comment block
+	// above.
+	offset += 2
+
 	targetAddr := cursor + uint(offset)
 	// TODO: Explore branch relative offset in the end of line comment
 
-	targetIdx := branchTargetForAddr(targetAddr)
-	if targetIdx == -1 {
-		panic("Target address was not found in first pass")
+	targetIdx, ok := branchTargets[targetAddr]
+	if !ok {
+		// If the branch offset is not a 'reachable' instruction then express
+		// the branch with the relative offset. However beebasm interprets an
+		// integer literal as an absolute address, so instead write out an
+		// expression that generates the same opcodes, e.g. P%+12 or P%-87
+		return fmt.Sprintf("P%%%+d", offset)
 	}
 	return fmt.Sprintf("loop_%d", targetIdx)
 }
