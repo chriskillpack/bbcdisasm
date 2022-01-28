@@ -55,7 +55,7 @@ func Disassemble(program []byte, maxBytes, offset, loadAddr uint, w io.Writer) {
 		}
 
 		// All instructions are at least one byte long and the first
-		// byte is sufficient to identify the instruction
+		// byte is sufficient to identify the instruction.
 		b := program[cursor]
 
 		var sb strings.Builder
@@ -63,9 +63,10 @@ func Disassemble(program []byte, maxBytes, offset, loadAddr uint, w io.Writer) {
 
 		op, ok := OpCodesMap[b]
 		if ok && isOpcodeDocumented(op) {
-			// The valid instruction will be printed to a line with format
+			// A valid instruction will be printed to a line with format
 			//
-			// address [instruction op codes ...] decoded instruction
+			// [instruction mnemonic]     \ [instruction hex address] [instruction opcodes]
+			//                            ^--- 25th column
 			opcodes := program[cursor : cursor+op.length]
 
 			sb.WriteString(op.name)
@@ -87,8 +88,17 @@ func Disassemble(program []byte, maxBytes, offset, loadAddr uint, w io.Writer) {
 
 			cursor += op.length
 		} else {
+			// If the opcode is unrecognized then it is treated as data and
+			// formatted
+			//
+			// EQUB &[opcode in hex]
 			bs := []byte{b}
 			if ok {
+				// If the opcode is recognized then it must be an undocumented
+				// instruction (UD). Formatting
+				//
+				// EQUB [opcode],...,[opcode] \ UD [instruction mnemonic]
+				//                            ^--- 25th column
 				bs = program[cursor : cursor+op.length]
 			}
 

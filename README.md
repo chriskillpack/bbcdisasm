@@ -101,6 +101,12 @@ $ bbc-disasm d --loadaddr 0x3000 exile/EXILE 0x1A10 8
  JSR OSBYTE              \ &4A16 20 F4 FF
 ```
 
+#### Undocumented instructions
+
+There is very limited support for undocumented instructions in the 6502. Those
+that are are marked in the end of line comment with `UD`, followed by a very
+limited instruction mnemonic. At this time there is no addition detail provided.
+
 ## TODO
 
 * Improved BBC Micro memory map support in the disassembler
