@@ -4,7 +4,7 @@ A work in progress disassembler for 6502 programs and Acorn DFS disk image extra
 
 ## Build
 
-[Requires a version of Go that supports modules]
+Requires a version of Go that supports modules.
 
 ```bash
 $ go build .
@@ -15,7 +15,7 @@ $ go build .
 ### List disk image contents
 List the contents of a DFS image, in this case Exile one of my favorite BBC B games and an amazing technical achievement in 32Kb of RAM.
 
-```bash
+```
 $ bbc-disasm list images/Exile.ssd
 Disk Title  EXILE
 Num Files   7
