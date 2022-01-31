@@ -104,10 +104,9 @@ $ bbc-disasm d --loadaddr 0x3000 exile/EXILE 0x1A10 8
 
 #### Undocumented instructions
 
-There is very limited support for undocumented instructions in the 6502. Those
-that are are marked in the end of line comment with `UD`, followed by a very
-limited instruction mnemonic. At this time there is no addition detail provided.
+There is very limited support for undocumented instructions in the 6502. This is partly because beebasm, the targeted assembler, does not support them. In order to preserve binary compatibility `bbc-disasm` will emit the opcode bytes of the instruction as an `EQUB` statement and comment the line with `UD` (UnDocumented) together with a very limited instruction mnemonic.
 
+The byte sequence `&53,&63` disassembles to `SRE (&63),Y`, an undocumented instruction, and will be output as
 ```
  EQUB &53,&63           \ UD SRE            Sc
 ```
