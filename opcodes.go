@@ -307,10 +307,13 @@ func findBranchTargets(program []uint8, maxBytes, offset uint) {
 				// This is ugly but it will do for now
 				instructions := program[cursor : cursor+op.length]
 
-				offset := int(instructions[1]) + 2 // All branches are 2 bytes long
+				offset := int(instructions[1]) // All branches are 2 bytes long
 				if offset > 127 {
 					offset = offset - 256
 				}
+				// Adjust offset to account for the 2 byte behavior, see
+				// genBranch().
+				offset += 2
 
 				targ := cursor + uint(offset)
 				if _, ok := branchTargets[targ]; !ok {
