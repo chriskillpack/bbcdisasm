@@ -59,46 +59,47 @@ This is a simple 2-pass 6502 byte-code disassembler that uses light knowledge of
 
 Let's disassemble the first non-BASIC program in the Exile disk image, EXILE, starting from it's execution point. The output below shows loop targets and identification of OS entry point addresses.
 
-```bash
+```
 $ bbc-disasm disasm --loadaddr 0x3000 EXILE 0x1A10
 ...
 CODE% = &3000
 
- LDA #&C8                \ &4A10 A9 C8
- LDX #&03                \ &4A12 A2 03
- LDY #&00                \ &4A14 A0 00
- JSR OSBYTE              \ &4A16 20 F4 FF
- LDY #&00                \ &4A19 A0 00
- JSR &4A00               \ &4A1B 20 00 4A
- JSR &4980               \ &4A1E 20 80 49
- LDY #&28                \ &4A21 A0 28
- JSR &4A00               \ &4A23 20 00 4A
- LDA #&15                \ &4A26 A9 15
- LDX #&00                \ &4A28 A2 00
- JSR OSBYTE              \ &4A2A 20 F4 FF
- LDA #&81                \ &4A2D A9 81
- LDX #&20                \ &4A2F A2 20
- LDY #&03                \ &4A31 A0 03
- JSR OSBYTE              \ &4A33 20 F4 FF
- LDA #&00                \ &4A36 A9 00
- LDY #&0F                \ &4A38 A0 0F
+ LDA #&C8               \ &4A10 A9 C8       ..
+ LDX #&03               \ &4A12 A2 03       ..
+ LDY #&00               \ &4A14 A0 00       ..
+ JSR OSBYTE             \ &4A16 20 F4 FF     ..
+ LDY #&00               \ &4A19 A0 00       ..
+ JSR &4A00              \ &4A1B 20 00 4A     .J
+ JSR &4980              \ &4A1E 20 80 49     .I
+ LDY #&28               \ &4A21 A0 28       .(
+ JSR &4A00              \ &4A23 20 00 4A     .J
+ LDA #&15               \ &4A26 A9 15       ..
+ LDX #&00               \ &4A28 A2 00       ..
+ JSR OSBYTE             \ &4A2A 20 F4 FF     ..
+ LDA #&81               \ &4A2D A9 81       ..
+ LDX #&20               \ &4A2F A2 20       .
+ LDY #&03               \ &4A31 A0 03       ..
+ JSR OSBYTE             \ &4A33 20 F4 FF     ..
+ LDA #&00               \ &4A36 A9 00       ..
+ LDY #&0F               \ &4A38 A0 0F       ..
 .loop_0
- CPY &0DBC               \ &4A3A CC BC 0D
- BEQ loop_1              \ &4A3D F0 03
-...
+ CPY &0DBC              \ &4A3A CC BC 0D    ...
+ BEQ loop_1             \ &4A3D F0 03       ..
+ STA &02A1,Y            \ &4A3F 99 A1 02    ...
+ ...
 ```
 
 The `--loadaddr` options instructs the disassembler to 'relocate' the program to a different memory address. This is to match the actual memory address DFS will place the file contents. TODO: Apply loadaddr to the execution address.
 
 By default `disasm` will disassemble the entire file though this can be limited by the optional final length argument
 
-```bash
+```
 $ bbc-disasm d --loadaddr 0x3000 exile/EXILE 0x1A10 8
 ...
- LDA #&C8                \ &4A10 A9 C8
- LDX #&03                \ &4A12 A2 03
- LDY #&00                \ &4A14 A0 00
- JSR OSBYTE              \ &4A16 20 F4 FF
+ LDA #&C8               \ &4A10 A9 C8       ..
+ LDX #&03               \ &4A12 A2 03       ..
+ LDY #&00               \ &4A14 A0 00       ..
+ JSR OSBYTE             \ &4A16 20 F4 FF     ..
 ```
 
 #### Undocumented instructions
@@ -106,6 +107,10 @@ $ bbc-disasm d --loadaddr 0x3000 exile/EXILE 0x1A10 8
 There is very limited support for undocumented instructions in the 6502. Those
 that are are marked in the end of line comment with `UD`, followed by a very
 limited instruction mnemonic. At this time there is no addition detail provided.
+
+```
+ EQUB &53,&63           \ UD SRE            Sc
+```
 
 ## TODO
 
