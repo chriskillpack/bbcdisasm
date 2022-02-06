@@ -44,8 +44,8 @@ func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Write
 		if ok && isOpcodeDocumented(op) {
 			// A valid instruction will be printed to a line with format
 			//
-			// [instruction mnemonic]     \ [instruction hex address] [instruction opcodes]   [printable bytes]
-			//                            ^--- 25th column                                    ^--- 45th column
+			// [instruction mnemonic]     \ [address] [instruction opcodes]   [printable bytes]
+			//                            ^--- 25th column                    ^--- 45th column
 			opcodes := program[cursor : cursor+op.length]
 
 			sb.WriteString(op.name)
@@ -70,15 +70,15 @@ func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Write
 			// If the opcode is unrecognized then it is treated as data and
 			// formatted
 			//
-			// EQUB &[opcode in hex]    \                 [printable bytes]
+			// EQUB &[opcode in hex]    \ [address]       [printable bytes]
 			//                          ^--- 25th column  ^--- 45th column
 			bs := []byte{b}
 			if ok {
 				// If the opcode is recognized then it must be an undocumented
 				// instruction (UD). Formatting
 				//
-				// EQUB [opcode],...,[opcode] \ UD [instruction mnemonic]   [printable bytes]
-				//                            ^--- 25th column              ^--- 45th column
+				// EQUB [opcode],...,[opcode] \ [address] UD [instruction mnemonic]   [printable bytes]
+				//                            ^--- 25th column                        ^--- 45th column
 				bs = program[cursor : cursor+op.length]
 			}
 
@@ -91,6 +91,8 @@ func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Write
 
 			appendSpaces(&sb, max(24-sb.Len(), 1))
 			sb.WriteString("\\ ")
+			sb.WriteString(fmt.Sprintf("&%04X", cursor+branchAdjust))
+			sb.WriteByte(' ')
 
 			if ok {
 				// Undocumented instruction
