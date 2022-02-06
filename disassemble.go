@@ -9,9 +9,10 @@ import (
 )
 
 // Disassemble prints a 6502 program to stdout
-// loadAddr fixes up addresses to match the load address. Uses
-// https://twitter.com/KevEdwardsRetro/status/996474534730567681 as an output template
-func Disassemble(program []byte, maxBytes, offset, loadAddr uint, w io.Writer) {
+// offset is where disassembly starts from the beginning of program.
+// branchAdjust is used to adjust the target address of relative branches to a
+// 'meaningful' address, typically the load address of the program.
+func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Writer) {
 	// First pass through program is to find the location
 	// of any branches. These will be marked as labels in
 	// the output.
@@ -21,10 +22,8 @@ func Disassemble(program []byte, maxBytes, offset, loadAddr uint, w io.Writer) {
 	data := struct {
 		OSmap    map[uint]string
 		LoadAddr uint
-	}{addressToOsCallName, loadAddr}
+	}{addressToOsCallName, branchAdjust}
 	distem.Execute(w, data)
-
-	branchOffset = loadAddr // gross. setting a package level var
 
 	// Second pass through program is to decode each instruction
 	// and print to stdout.
@@ -57,7 +56,7 @@ func Disassemble(program []byte, maxBytes, offset, loadAddr uint, w io.Writer) {
 			sb.WriteString("\\ ")
 
 			out := []string{
-				fmt.Sprintf("&%04X", cursor+uint(branchOffset)),
+				fmt.Sprintf("&%04X", cursor+branchAdjust),
 			}
 			for _, i := range opcodes {
 				out = append(out, fmt.Sprintf("%02X", i))

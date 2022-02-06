@@ -165,6 +165,7 @@ func main() {
 					return cli.Exit(err, 1)
 				}
 
+				// Is there an offset from program start for disassembly to begin?
 				var offset int64
 				if args.Len() >= 2 {
 					if offset, err = strconv.ParseInt(args.Get(1), 0, 64); err != nil {
@@ -178,6 +179,7 @@ func main() {
 					}
 				}
 
+				// Is there an optional length argument?
 				length := fileLen - offset
 				if args.Len() >= 3 {
 					if length, err = strconv.ParseInt(args.Get(2), 0, 64); err != nil {
@@ -191,8 +193,7 @@ func main() {
 					}
 				}
 
-				loadAddress := uint(c.Int("loadaddr"))
-				return disasmFile(file, offset, length, loadAddress)
+				return disasmFile(file, offset, length, uint(c.Int("loadaddr")))
 			},
 			Flags: []cli.Flag{
 				&cli.IntFlag{

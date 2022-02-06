@@ -13,8 +13,6 @@ type opcode struct {
 	decode decodeFunc
 }
 
-var branchOffset uint // Adjustment to make to absolute branch locations
-
 var (
 	// OpCodesMap maps from first instruction opcode byte to 6502 instruction
 	// Most opcodes from http://www.6502.org/tutorials/6502opcodes.html
