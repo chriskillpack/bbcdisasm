@@ -57,7 +57,7 @@ $ bbc-disasm extract --outdir out images/Exile.ssd EXILE ExileL
 
 This is a simple 2-pass 6502 byte-code disassembler that uses light knowledge of the BBC Micro memory map to replace well known memory address with their names, e.g. `0xFFF7` is the `OSCLI` entry point.
 
-Let's disassemble the first non-BASIC program in the Exile disk image, EXILE, starting from it's execution point. The output below shows loop targets and identification of OS entry point addresses.
+Let's disassemble the first non-BASIC program in the Exile disk image, EXILE, starting from it's execution point. The output below shows labelled branch targets and identification of OS entry point addresses.
 
 ```
 $ bbc-disasm disasm --loadaddr 0x3000 EXILE 0x1A10
@@ -82,9 +82,9 @@ CODE% = &3000
  JSR OSBYTE             \ &4A33 20 F4 FF     ..
  LDA #&00               \ &4A36 A9 00       ..
  LDY #&0F               \ &4A38 A0 0F       ..
-.loop_0
+.label_0
  CPY &0DBC              \ &4A3A CC BC 0D    ...
- BEQ loop_1             \ &4A3D F0 03       ..
+ BEQ label_1            \ &4A3D F0 03       ..
  STA &02A1,Y            \ &4A3F 99 A1 02    ...
  ...
 ```

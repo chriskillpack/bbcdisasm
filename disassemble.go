@@ -16,7 +16,7 @@ func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Write
 	// First pass through program is to find the location
 	// of any branches. These will be marked as labels in
 	// the output.
-	findBranchTargets(program, maxBytes, offset)
+	findBranchTargets(program, maxBytes, offset, branchAdjust)
 
 	distem, _ := template.New("disasm").Parse(disasmHeader)
 	data := struct {
@@ -29,8 +29,10 @@ func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Write
 	// and print to stdout.
 	cursor := offset
 	for cursor < (offset + maxBytes) {
-		if targetIdx, ok := branchTargets[cursor]; ok {
-			fmt.Fprintf(w, ".loop_%d\n", targetIdx)
+		if targetIdx, ok := branchTargets[cursor+branchAdjust]; ok {
+			io.WriteString(w, ".")
+			fmt.Fprintf(w, labelFormatString, targetIdx)
+			io.WriteString(w, "\n")
 		}
 
 		// All instructions are at least one byte long and the first
@@ -50,7 +52,7 @@ func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Write
 
 			sb.WriteString(op.name)
 			sb.WriteByte(' ')
-			sb.WriteString(op.decode(opcodes, cursor))
+			sb.WriteString(op.decode(opcodes, cursor, branchAdjust))
 
 			appendSpaces(&sb, max(24-sb.Len(), 1))
 			sb.WriteString("\\ ")

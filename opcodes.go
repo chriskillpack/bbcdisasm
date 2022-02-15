@@ -5,13 +5,17 @@ import (
 	"sort"
 )
 
-type decodeFunc func(bytes []byte, cursor uint) string
+// decodeFunc takes a byte sequence of an instruction opcode and operands,
+// returns the human readable representation
+type decodeFunc func(bytes []byte, cursor, branchAdjust uint) string
 
 type opcode struct {
 	length uint   // number of bytes include opcode
 	name   string // human readable instruction 'name' of opcode
 	decode decodeFunc
 }
+
+const labelFormatString = "label_%d"
 
 var (
 	// OpCodesMap maps from first instruction opcode byte to 6502 instruction
@@ -226,6 +230,8 @@ var (
 
 	branchInstructions = []string{"BPL", "BMI", "BVC", "BVS", "BCC", "BCS", "BNE", "BEQ"}
 
+	jumpInstructions = []string{"JMP", "JSR"}
+
 	// Maps absolute addresses to names of BBC MICRO OS calls
 	addressToOsCallName = map[uint]string{
 		0xFFB9: "OSRDRM",
@@ -278,18 +284,32 @@ var (
 	branchTargets map[uint]int
 )
 
+type branchType int
+
+const (
+	Neither branchType = iota
+	Branch
+	Jump
+)
+
 // Returns true if this opcode is a branch
-func (o *opcode) isBranch() bool {
+func (o *opcode) branchOrJump() branchType {
 	for _, v := range branchInstructions {
 		if o.name == v {
-			return true
+			return Branch
 		}
 	}
 
-	return false
+	for _, v := range jumpInstructions {
+		if o.name == v {
+			return Jump
+		}
+	}
+
+	return Neither
 }
 
-func findBranchTargets(program []uint8, maxBytes, offset uint) {
+func findBranchTargets(program []uint8, maxBytes, offset, branchAdjust uint) {
 	// Track all reachable instructions. That is the address of the first
 	// opcode of each instruction starting at offset and moving forwards.
 	iloc := make(map[uint]bool)
@@ -297,14 +317,15 @@ func findBranchTargets(program []uint8, maxBytes, offset uint) {
 	branchTargets = make(map[uint]int)
 	cursor := offset
 	for cursor < (offset + maxBytes) {
-		iloc[cursor] = true // Reachable instruction
+		iloc[cursor+branchAdjust] = true // Reachable instruction
 		b := program[cursor]
 
 		if op, ok := OpCodesMap[b]; ok {
-			if op.isBranch() {
-				// This is ugly but it will do for now
-				instructions := program[cursor : cursor+op.length]
+			instructions := program[cursor : cursor+op.length]
 
+			switch op.branchOrJump() {
+			case Branch:
+				// This is ugly but it will do for now
 				offset := int(instructions[1]) // All branches are 2 bytes long
 				if offset > 127 {
 					offset = offset - 256
@@ -313,11 +334,22 @@ func findBranchTargets(program []uint8, maxBytes, offset uint) {
 				// genBranch().
 				offset += 2
 
-				targ := cursor + uint(offset)
+				targ := cursor + uint(offset) + branchAdjust
 				if _, ok := branchTargets[targ]; !ok {
 					branchTargets[targ] = 0 // value will be filled out later
 				}
+			case Jump:
+				// Skip indirect jump since we don't know the target of the jump
+				if b != 0x6C {
+					targ := (uint(instructions[2]) << 8) + uint(instructions[1])
+					if _, ok := branchTargets[targ]; !ok {
+						branchTargets[targ] = 0 // value will be filled out later
+					}
+				}
+			case Neither:
+				// Don't do anything
 			}
+
 			cursor += op.length
 		} else {
 			cursor++
@@ -347,60 +379,67 @@ func findBranchTargets(program []uint8, maxBytes, offset uint) {
 	}
 }
 
-func genImmediate(bytes []byte, _ uint) string {
+func genImmediate(bytes []byte, _, _ uint) string {
 	return fmt.Sprintf("#&%02X", bytes[1])
 }
 
-func genZeroPage(bytes []byte, _ uint) string {
+func genZeroPage(bytes []byte, _, _ uint) string {
 	return fmt.Sprintf("&%02X", bytes[1])
 }
 
-func genZeroPageX(bytes []byte, _ uint) string {
+func genZeroPageX(bytes []byte, _, _ uint) string {
 	return fmt.Sprintf("&%02X,X", bytes[1])
 }
 
-func genZeroPageY(bytes []byte, _ uint) string {
+func genZeroPageY(bytes []byte, _, _ uint) string {
 	return fmt.Sprintf("&%02X,Y", bytes[1])
 }
 
-func genAbsolute(bytes []byte, _ uint) string {
+func genAbsolute(bytes []byte, _, _ uint) string {
 	val := (uint(bytes[2]) << 8) + uint(bytes[1])
 	return fmt.Sprintf("&%04X", val)
 }
 
-func genAbsoluteOsCall(bytes []byte, _ uint) string {
-	val := (uint(bytes[2]) << 8) + uint(bytes[1])
-	if osCall, ok := addressToOsCallName[val]; ok {
+func genAbsoluteOsCall(bytes []byte, _, _ uint) string {
+	addr := (uint(bytes[2]) << 8) + uint(bytes[1])
+
+	// Check if it is a well known OS address
+	if osCall, ok := addressToOsCallName[addr]; ok {
 		return osCall
 	}
 
-	return fmt.Sprintf("&%04X", val)
+	// Check if it is a known branch target
+	if targetIdx, ok := branchTargets[addr]; ok {
+		return fmt.Sprintf(labelFormatString, targetIdx)
+	}
+
+	return fmt.Sprintf("&%04X", addr)
 }
 
-func genAbsoluteX(bytes []byte, _ uint) string {
+func genAbsoluteX(bytes []byte, _, _ uint) string {
 	val := (uint(bytes[2]) << 8) + uint(bytes[1])
 	return fmt.Sprintf("&%04X,X", val)
 }
 
-func genAbsoluteY(bytes []byte, _ uint) string {
+func genAbsoluteY(bytes []byte, _, _ uint) string {
 	val := (uint(bytes[2]) << 8) + uint(bytes[1])
 	return fmt.Sprintf("&%04X,Y", val)
 }
 
-func genIndirect(bytes []byte, _ uint) string {
+func genIndirect(bytes []byte, _, _ uint) string {
 	val := (uint(bytes[2]) << 8) + uint(bytes[1])
 	return fmt.Sprintf("(&%04X)", val)
 }
 
-func genIndirectX(bytes []byte, _ uint) string {
+func genIndirectX(bytes []byte, _, _ uint) string {
 	return fmt.Sprintf("(&%02X,X)", bytes[1])
 }
 
-func genIndirectY(bytes []byte, _ uint) string {
+func genIndirectY(bytes []byte, _, _ uint) string {
 	return fmt.Sprintf("(&%02X),Y", bytes[1])
 }
 
-func genBranch(bytes []byte, cursor uint) string {
+func genBranch(bytes []byte, cursor, branchAdjust uint) string {
 	// From http://www.6502.org/tutorials/6502opcodes.html
 	// "When calculating branches a forward branch of 6 skips the following 6
 	// bytes so, effectively the program counter points to the address that is 8
@@ -414,7 +453,7 @@ func genBranch(bytes []byte, cursor uint) string {
 	// above.
 	offset += 2
 
-	targetAddr := cursor + uint(offset)
+	targetAddr := cursor + uint(offset) + branchAdjust
 	// TODO: Explore branch relative offset in the end of line comment
 
 	targetIdx, ok := branchTargets[targetAddr]
@@ -425,13 +464,13 @@ func genBranch(bytes []byte, cursor uint) string {
 		// expression that generates the same opcodes, e.g. P%+12 or P%-87
 		return fmt.Sprintf("P%%%+d", offset)
 	}
-	return fmt.Sprintf("loop_%d", targetIdx)
+	return fmt.Sprintf(labelFormatString, targetIdx)
 }
 
-func genAccumulator([]byte, uint) string {
+func genAccumulator(_ []byte, _, _ uint) string {
 	return "A"
 }
 
-func genNull([]byte, uint) string {
+func genNull(_ []byte, _, _ uint) string {
 	return ""
 }
