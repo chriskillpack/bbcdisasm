@@ -29,17 +29,20 @@ func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Write
 	// and print to stdout.
 	cursor := offset
 	for cursor < (offset + maxBytes) {
+		var sb strings.Builder
 		if targetIdx, ok := branchTargets[cursor+branchAdjust]; ok {
-			io.WriteString(w, ".")
-			fmt.Fprintf(w, labelFormatString, targetIdx)
-			io.WriteString(w, "\n")
+			sb.WriteByte('.')
+			sb.WriteString(fmt.Sprintf(labelFormatString, targetIdx))
+			sb.WriteString("\n")
+			w.Write([]byte(sb.String()))
+
+			sb.Reset()
 		}
 
 		// All instructions are at least one byte long and the first
 		// byte is sufficient to identify the instruction.
 		b := program[cursor]
 
-		var sb strings.Builder
 		sb.WriteByte(' ')
 
 		op, ok := OpCodesMap[b]
