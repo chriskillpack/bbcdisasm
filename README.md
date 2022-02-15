@@ -7,7 +7,7 @@ A work in progress disassembler for 6502 programs and Acorn DFS disk image extra
 Requires a version of Go that supports modules.
 
 ```bash
-$ go build .
+$ go build ./cmd/bbc-disasm
 ```
 
 ## Usage
@@ -91,7 +91,7 @@ CODE% = &3000
 
 The `--loadaddr` options instructs the disassembler to 'relocate' the program to a different memory address. This is to match the actual memory address DFS will place the file contents. TODO: Apply loadaddr to the execution address.
 
-By default `disasm` will disassemble the entire file though this can be limited by the optional final length argument
+By default `disasm` will disassemble the entire file though this can be limited by the optional final length argument. The disassembler will complete disassembly of an instruction if it straddles the length. In the example below the disassembler processes 9 bytes even though only 8 were asked for, because the final instruction straddles the 8 byte boundary:
 
 ```
 $ bbc-disasm d --loadaddr 0x3000 exile/EXILE 0x1A10 8
@@ -102,9 +102,17 @@ $ bbc-disasm d --loadaddr 0x3000 exile/EXILE 0x1A10 8
  JSR OSBYTE             \ &4A16 20 F4 FF     ..
 ```
 
+#### Unknown instructions
+
+It is very common for BBC micro programs to store data amongst code. The disassembler has no knowledge of where these blocks of data are so it will attempt to disassemble everything. Not all byte values map to 6502 instructions, in this case the byte value will be emitted as a 'data byte' using the `EQUB` directive:
+
+```
+ EQUB &6F               \ &3491 6F          o
+```
+
 #### Undocumented instructions
 
-There is very limited support for undocumented instructions in the 6502. This is partly because beebasm, the targeted assembler, does not support them. In order to preserve binary compatibility `bbc-disasm` will emit the opcode bytes of the instruction as an `EQUB` statement and comment the line with `UD` (UnDocumented) together with a very limited instruction mnemonic.
+There is very limited support for undocumented instructions in the 6502. This is partly because beebasm, the targeted assembler, does not support them. In order to preserve binary compatibility `bbc-disasm` will emit the opcode bytes of the instruction as an `EQUB` directive and comment the line with `UD` (UnDocumented) together with a very limited instruction mnemonic.
 
 The byte sequence `&53,&63` disassembles to `SRE (&63),Y`, an undocumented instruction, and will be output as
 ```
@@ -114,3 +122,4 @@ The byte sequence `&53,&63` disassembles to `SRE (&63),Y`, an undocumented instr
 ## TODO
 
 * Improved BBC Micro memory map support in the disassembler
+* Restart points in the disassembler to ensure disassembly doesn't miss the start of program code
