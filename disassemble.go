@@ -69,13 +69,15 @@ func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Write
 
 			cursor += op.length
 		} else {
+			ud := ok
+
 			// If the opcode is unrecognized then it is treated as data and
 			// formatted
 			//
-			// EQUB &[opcode in hex]    \ [address]       [printable bytes]
-			//                          ^--- 25th column  ^--- 45th column
+			// EQUB &[opcode]    \ [address] [opcode]   [printable bytes]
+			//                   ^--- 25th column       ^--- 45th column
 			bs := []byte{b}
-			if ok {
+			if ud {
 				// If the opcode is recognized then it must be an undocumented
 				// instruction (UD). Formatting
 				//
@@ -96,10 +98,13 @@ func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Write
 			sb.WriteString(fmt.Sprintf("&%04X", cursor+branchAdjust))
 			sb.WriteByte(' ')
 
-			if ok {
+			if ud {
 				// Undocumented instruction
 				sb.WriteString("UD ")
 				sb.WriteString(op.name)
+			} else {
+				// Data byte. Print out the data byte for visual consistency
+				sb.WriteString(fmt.Sprintf("%02X", bs[0]))
 			}
 
 			appendPrintableBytes(&sb, bs)
