@@ -13,6 +13,9 @@ import (
 // branchAdjust is used to adjust the target address of relative branches to a
 // 'meaningful' address, typically the load address of the program.
 func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Writer) {
+	usedOSAddress = make(map[uint]bool)
+	usedOSVector = make(map[uint]bool)
+
 	// First pass through program is to find the location
 	// of any branches. These will be marked as labels in
 	// the output.
@@ -20,10 +23,15 @@ func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Write
 
 	distem, _ := template.New("disasm").Parse(disasmHeader)
 	data := struct {
-		OSmap    map[uint]string
-		LoadAddr uint
-	}{addressToOsCallName, branchAdjust}
-	distem.Execute(w, data)
+		UsedOSAddress map[uint]bool
+		OSAddress     map[uint]string
+		UsedOSVector  map[uint]bool
+		OSVector      map[uint]string
+		LoadAddr      uint
+	}{usedOSAddress, addressToOsCallName, usedOSVector, osVectorAddresses, branchAdjust}
+	if err := distem.Execute(w, data); err != nil {
+		panic(err)
+	}
 
 	// Second pass through program is to decode each instruction
 	// and print to stdout.
@@ -55,7 +63,7 @@ func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Write
 
 			sb.WriteString(op.name)
 			sb.WriteByte(' ')
-			sb.WriteString(op.decode(opcodes, cursor, branchAdjust))
+			sb.WriteString(decode(op, opcodes, cursor, branchAdjust))
 
 			appendSpaces(&sb, max(24-sb.Len(), 1))
 			sb.WriteString("\\ ")
@@ -160,12 +168,19 @@ var disasmHeader = `\ **********************************************************
 \
 \ ******************************************************************************
 
-{{ range $addr, $os := .OSmap }}
-  {{- printf "%-6s" $os }} = {{ printf "&%0X" $addr }}
+{{ if .UsedOSAddress }}\ OS Call Addresses
+{{ $os := .OSAddress }}
+{{- range $addr, $elem := .UsedOSAddress }}{{ printf "%-6s" (index $os $addr) }} = {{ printf "&%0X" $addr }}
 {{ end }}
+{{- end }}
+{{ if .UsedOSVector }}\ OS Vector Addresses
+{{ $vec := .OSVector }}
+{{- range $addr, $elem := .UsedOSVector }}{{ printf "%-5s" (index $vec $addr) }} = {{ printf "&%0X" $addr }}
+{{ end }}
+{{- end }}
 {{ if .LoadAddr }}CODE% = {{ printf "&%X" .LoadAddr }}
 
 ORG CODE%
+{{ else -}}
 {{ end }}
-
 `
