@@ -372,37 +372,37 @@ func findBranchTargets(program []uint8, maxBytes, offset, branchAdjust uint) {
 			switch op.branchOrJump() {
 			case Branch:
 				// This is ugly but it will do for now
-				offset := int(instructions[1]) // All branches are 2 bytes long
-				if offset > 127 {
-					offset = offset - 256
+				boff := int(instructions[1]) // All branches are 2 bytes long
+				if boff > 127 {
+					boff = boff - 256
 				}
 				// Adjust offset to account for the 2 byte behavior, see
 				// genBranch().
-				offset += 2
+				boff += 2
 
-				targ := cursor + uint(offset) + branchAdjust
-				if _, ok := branchTargets[targ]; !ok {
-					branchTargets[targ] = 0 // value will be filled out later
+				tgt := cursor + uint(boff) + branchAdjust
+				if _, ok := branchTargets[tgt]; !ok {
+					branchTargets[tgt] = 0 // value will be filled out later
 				}
 			case Jump:
 				// Skip indirect jump since we don't know the target of the jump
 				if b != OpJMP_Indirect {
-					targ := (uint(instructions[2]) << 8) + uint(instructions[1])
-					if _, ok := branchTargets[targ]; !ok {
-						branchTargets[targ] = 0 // value will be filled out later
+					tgt := (uint(instructions[2]) << 8) + uint(instructions[1])
+					if _, ok := branchTargets[tgt]; !ok {
+						branchTargets[tgt] = 0 // value will be filled out later
 					}
 
 					// If the jump target is a well known OS call then mark as seen
-					if _, ok := addressToOsCallName[targ]; ok {
-						usedOSAddress[targ] = true
+					if _, ok := addressToOsCallName[tgt]; ok {
+						usedOSAddress[tgt] = true
 					}
 				}
 			case Neither:
 				// Check instructions with Absolute addressing
 				if op.AddrMode == Absolute {
-					targ := (uint(instructions[2]) << 8) + uint(instructions[1])
-					if _, ok := osVectorAddresses[targ]; ok {
-						usedOSVector[targ] = true
+					tgt := (uint(instructions[2]) << 8) + uint(instructions[1])
+					if _, ok := osVectorAddresses[tgt]; ok {
+						usedOSVector[tgt] = true
 					}
 				}
 			}
@@ -502,8 +502,8 @@ func genAbsoluteOsCall(bytes []byte) string {
 	}
 
 	// Check if it is a known branch target
-	if targetIdx, ok := branchTargets[addr]; ok {
-		return fmt.Sprintf(labelFormatString, targetIdx)
+	if tgtIdx, ok := branchTargets[addr]; ok {
+		return fmt.Sprintf(labelFormatString, tgtIdx)
 	}
 
 	return fmt.Sprintf("&%04X", addr)
@@ -515,24 +515,24 @@ func genBranch(bytes []byte, cursor, branchAdjust uint) string {
 	// bytes so, effectively the program counter points to the address that is 8
 	// bytes beyond the address of the branch opcode; and a backward branch of
 	// $FA (256-6) goes to an address 4 bytes before the branch instruction."
-	offset := int(bytes[1]) // All branches are 2 bytes long
-	if offset > 127 {
-		offset = offset - 256
+	boff := int(bytes[1]) // All branches are 2 bytes long
+	if boff > 127 {
+		boff = boff - 256
 	}
 	// Adjust offset to account for the 2 byte behavior from the comment block
 	// above.
-	offset += 2
+	boff += 2
 
-	targetAddr := cursor + uint(offset) + branchAdjust
+	tgt := cursor + uint(boff) + branchAdjust
 	// TODO: Explore branch relative offset in the end of line comment
 
-	targetIdx, ok := branchTargets[targetAddr]
+	tgtIdx, ok := branchTargets[tgt]
 	if !ok {
 		// If the branch offset is not a 'reachable' instruction then express
 		// the branch with the relative offset. However beebasm interprets an
 		// integer literal as an absolute address, so instead write out an
 		// expression that generates the same opcodes, e.g. P%+12 or P%-87
-		return fmt.Sprintf("P%%%+d", offset)
+		return fmt.Sprintf("P%%%+d", boff)
 	}
-	return fmt.Sprintf(labelFormatString, targetIdx)
+	return fmt.Sprintf(labelFormatString, tgtIdx)
 }
