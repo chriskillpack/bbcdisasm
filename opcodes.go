@@ -38,218 +38,229 @@ const (
 	IndirectY
 )
 
-type opcode struct {
-	length   uint   // number of bytes include opcode
-	name     string // human readable instruction 'name' of opcode
-	addrMode AddressingMode
+// Opcode defines a 6502 opcode
+type Opcode struct {
+	Value    byte   // Byte value for the opcode. All opcodes are one byte long.
+	Name     string // Human readable instruction 'name'
+	Length   uint   // Num bytes for instruction and arguments, includes opcode
+	AddrMode AddressingMode
 }
 
+// TODO - Constants for all instructions?
+const (
+	OpJMP_Absolute = 0x4C
+	OpJMP_Indirect = 0x6C
+	OpJSR_Absolute = 0x20
+)
+
 var (
-	// OpCodesMap maps from first instruction opcode byte to 6502 instruction
 	// Most opcodes from http://www.6502.org/tutorials/6502opcodes.html
 	// ANC, SLO, SRE from https://github.com/mattgodbolt/jsbeeb/blob/master/6502.opcodes.js
-	OpCodesMap = map[byte]opcode{
-		0x69: {2, "ADC", Immediate},
-		0x65: {2, "ADC", ZeroPage},
-		0x75: {2, "ADC", ZeroPageX},
-		0x6D: {3, "ADC", Absolute},
-		0x7D: {3, "ADC", AbsoluteX},
-		0x79: {3, "ADC", AbsoluteY},
-		0x61: {2, "ADC", IndirectX},
-		0x71: {2, "ADC", IndirectY},
+	OpCodes = []Opcode{
+		{0x69, "ADC", 2, Immediate},
+		{0x65, "ADC", 2, ZeroPage},
+		{0x75, "ADC", 2, ZeroPageX},
+		{0x6D, "ADC", 3, Absolute},
+		{0x7D, "ADC", 3, AbsoluteX},
+		{0x79, "ADC", 3, AbsoluteY},
+		{0x61, "ADC", 2, IndirectX},
+		{0x71, "ADC", 2, IndirectY},
 
-		0x0B: {2, "ANC", Immediate},
-		0x2B: {2, "ANC", Immediate},
+		{0x0B, "ANC", 2, Immediate},
+		{0x2B, "ANC", 2, Immediate},
 
-		0x29: {2, "AND", Immediate},
-		0x25: {2, "AND", ZeroPage},
-		0x35: {2, "AND", ZeroPageX},
-		0x2D: {3, "AND", Absolute},
-		0x3D: {3, "AND", AbsoluteX},
-		0x39: {3, "AND", AbsoluteY},
-		0x21: {2, "AND", IndirectX},
-		0x31: {2, "AND", IndirectY},
+		{0x29, "AND", 2, Immediate},
+		{0x25, "AND", 2, ZeroPage},
+		{0x35, "AND", 2, ZeroPageX},
+		{0x2D, "AND", 3, Absolute},
+		{0x3D, "AND", 3, AbsoluteX},
+		{0x39, "AND", 3, AbsoluteY},
+		{0x21, "AND", 2, IndirectX},
+		{0x31, "AND", 2, IndirectY},
 
-		0x0A: {1, "ASL", Accumulator},
-		0x06: {2, "ASL", ZeroPage},
-		0x16: {2, "ASL", ZeroPageX},
-		0x0E: {3, "ASL", Absolute},
-		0x1E: {3, "ASL", AbsoluteX},
+		{0x0A, "ASL", 1, Accumulator},
+		{0x06, "ASL", 2, ZeroPage},
+		{0x16, "ASL", 2, ZeroPageX},
+		{0x0E, "ASL", 3, Absolute},
+		{0x1E, "ASL", 3, AbsoluteX},
 
-		0x24: {2, "BIT", ZeroPage},
-		0x2C: {3, "BIT", Absolute},
+		{0x24, "BIT", 2, ZeroPage},
+		{0x2C, "BIT", 3, Absolute},
 
-		0x10: {2, "BPL", None}, // all the branch instructions have special cased
-		0x30: {2, "BMI", None}, // printing
-		0x50: {2, "BVC", None},
-		0x70: {2, "BVS", None},
-		0x90: {2, "BCC", None},
-		0xB0: {2, "BCS", None},
-		0xD0: {2, "BNE", None},
-		0xF0: {2, "BEQ", None},
+		{0x10, "BPL", 2, None}, // all the branch instructions have special cased
+		{0x30, "BMI", 2, None}, // printing
+		{0x50, "BVC", 2, None},
+		{0x70, "BVS", 2, None},
+		{0x90, "BCC", 2, None},
+		{0xB0, "BCS", 2, None},
+		{0xD0, "BNE", 2, None},
+		{0xF0, "BEQ", 2, None},
 
-		0x00: {1, "BRK", None},
+		{0x00, "BRK", 1, None},
 
-		0xC9: {2, "CMP", Immediate},
-		0xC5: {2, "CMP", ZeroPage},
-		0xD5: {2, "CMP", ZeroPageX},
-		0xCD: {3, "CMP", Absolute},
-		0xDD: {3, "CMP", AbsoluteX},
-		0xD9: {3, "CMP", AbsoluteY},
-		0xC1: {2, "CMP", IndirectX},
-		0xD1: {2, "CMP", IndirectY},
+		{0xC9, "CMP", 2, Immediate},
+		{0xC5, "CMP", 2, ZeroPage},
+		{0xD5, "CMP", 2, ZeroPageX},
+		{0xCD, "CMP", 3, Absolute},
+		{0xDD, "CMP", 3, AbsoluteX},
+		{0xD9, "CMP", 3, AbsoluteY},
+		{0xC1, "CMP", 2, IndirectX},
+		{0xD1, "CMP", 2, IndirectY},
 
-		0xE0: {2, "CPX", Immediate},
-		0xE4: {2, "CPX", ZeroPage},
-		0xEC: {3, "CPX", Absolute},
+		{0xE0, "CPX", 2, Immediate},
+		{0xE4, "CPX", 2, ZeroPage},
+		{0xEC, "CPX", 3, Absolute},
 
-		0xC0: {2, "CPY", Immediate},
-		0xC4: {2, "CPY", ZeroPage},
-		0xCC: {3, "CPY", Absolute},
+		{0xC0, "CPY", 2, Immediate},
+		{0xC4, "CPY", 2, ZeroPage},
+		{0xCC, "CPY", 3, Absolute},
 
-		0xC6: {2, "DEC", ZeroPage},
-		0xD6: {2, "DEC", ZeroPageX},
-		0xCE: {3, "DEC", Absolute},
-		0xDE: {3, "DEC", AbsoluteX},
+		{0xC6, "DEC", 2, ZeroPage},
+		{0xD6, "DEC", 2, ZeroPageX},
+		{0xCE, "DEC", 3, Absolute},
+		{0xDE, "DEC", 3, AbsoluteX},
 
-		0x49: {2, "EOR", Immediate},
-		0x45: {2, "EOR", ZeroPage},
-		0x55: {2, "EOR", ZeroPageX},
-		0x4D: {3, "EOR", Absolute},
-		0x5D: {3, "EOR", AbsoluteX},
-		0x59: {3, "EOR", AbsoluteY},
-		0x41: {2, "EOR", IndirectX},
-		0x51: {2, "EOR", IndirectY},
+		{0x49, "EOR", 2, Immediate},
+		{0x45, "EOR", 2, ZeroPage},
+		{0x55, "EOR", 2, ZeroPageX},
+		{0x4D, "EOR", 3, Absolute},
+		{0x5D, "EOR", 3, AbsoluteX},
+		{0x59, "EOR", 3, AbsoluteY},
+		{0x41, "EOR", 2, IndirectX},
+		{0x51, "EOR", 2, IndirectY},
 
-		0x18: {1, "CLC", None},
-		0x38: {1, "SEC", None},
-		0x58: {1, "CLI", None},
-		0x78: {1, "SEI", None},
-		0xB8: {1, "CLV", None},
-		0xD8: {1, "CLD", None},
-		0xF8: {1, "SED", None},
+		{0x18, "CLC", 1, None},
+		{0x38, "SEC", 1, None},
+		{0x58, "CLI", 1, None},
+		{0x78, "SEI", 1, None},
+		{0xB8, "CLV", 1, None},
+		{0xD8, "CLD", 1, None},
+		{0xF8, "SED", 1, None},
 
-		0xE6: {2, "INC", ZeroPage},
-		0xF6: {2, "INC", ZeroPageX},
-		0xEE: {3, "INC", Absolute},
-		0xFE: {3, "INC", AbsoluteX},
+		{0xE6, "INC", 2, ZeroPage},
+		{0xF6, "INC", 2, ZeroPageX},
+		{0xEE, "INC", 3, Absolute},
+		{0xFE, "INC", 3, AbsoluteX},
 
-		0x4C: {3, "JMP", Absolute}, // special cased when printing
-		0x6C: {3, "JMP", Indirect},
+		{OpJMP_Absolute, "JMP", 3, Absolute}, // special cased when printing
+		{OpJMP_Indirect, "JMP", 3, Indirect},
 
-		0x20: {3, "JSR", Absolute}, // special cased when printing
+		{OpJSR_Absolute, "JSR", 3, Absolute}, // special cased when printing
 
-		0xA9: {2, "LDA", Immediate},
-		0xA5: {2, "LDA", ZeroPage},
-		0xB5: {2, "LDA", ZeroPageX},
-		0xAD: {3, "LDA", Absolute},
-		0xBD: {3, "LDA", AbsoluteX},
-		0xB9: {3, "LDA", AbsoluteY},
-		0xA1: {2, "LDA", IndirectX},
-		0xB1: {2, "LDA", IndirectY},
+		{0xA9, "LDA", 2, Immediate},
+		{0xA5, "LDA", 2, ZeroPage},
+		{0xB5, "LDA", 2, ZeroPageX},
+		{0xAD, "LDA", 3, Absolute},
+		{0xBD, "LDA", 3, AbsoluteX},
+		{0xB9, "LDA", 3, AbsoluteY},
+		{0xA1, "LDA", 2, IndirectX},
+		{0xB1, "LDA", 2, IndirectY},
 
-		0xA2: {2, "LDX", Immediate},
-		0xA6: {2, "LDX", ZeroPage},
-		0xB6: {2, "LDX", ZeroPageY},
-		0xAE: {3, "LDX", Absolute},
-		0xBE: {3, "LDX", AbsoluteY},
+		{0xA2, "LDX", 2, Immediate},
+		{0xA6, "LDX", 2, ZeroPage},
+		{0xB6, "LDX", 2, ZeroPageY},
+		{0xAE, "LDX", 3, Absolute},
+		{0xBE, "LDX", 3, AbsoluteY},
 
-		0xA0: {2, "LDY", Immediate},
-		0xA4: {2, "LDY", ZeroPage},
-		0xB4: {2, "LDY", ZeroPageX},
-		0xAC: {3, "LDY", Absolute},
-		0xBC: {3, "LDY", AbsoluteX},
+		{0xA0, "LDY", 2, Immediate},
+		{0xA4, "LDY", 2, ZeroPage},
+		{0xB4, "LDY", 2, ZeroPageX},
+		{0xAC, "LDY", 3, Absolute},
+		{0xBC, "LDY", 3, AbsoluteX},
 
-		0x4A: {1, "LSR", Accumulator},
-		0x46: {2, "LSR", ZeroPage},
-		0x56: {2, "LSR", ZeroPageX},
-		0x4E: {3, "LSR", Absolute},
-		0x5E: {3, "LSR", AbsoluteX},
+		{0x4A, "LSR", 1, Accumulator},
+		{0x46, "LSR", 2, ZeroPage},
+		{0x56, "LSR", 2, ZeroPageX},
+		{0x4E, "LSR", 3, Absolute},
+		{0x5E, "LSR", 3, AbsoluteX},
 
-		0xEA: {1, "NOP", None},
+		{0xEA, "NOP", 1, None},
 
-		0x09: {2, "ORA", Immediate},
-		0x05: {2, "ORA", ZeroPage},
-		0x15: {2, "ORA", ZeroPageX},
-		0x0D: {3, "ORA", Absolute},
-		0x1D: {3, "ORA", AbsoluteX},
-		0x19: {3, "ORA", AbsoluteY},
-		0x01: {2, "ORA", IndirectX},
-		0x11: {2, "ORA", IndirectY},
+		{0x09, "ORA", 2, Immediate},
+		{0x05, "ORA", 2, ZeroPage},
+		{0x15, "ORA", 2, ZeroPageX},
+		{0x0D, "ORA", 3, Absolute},
+		{0x1D, "ORA", 3, AbsoluteX},
+		{0x19, "ORA", 3, AbsoluteY},
+		{0x01, "ORA", 2, IndirectX},
+		{0x11, "ORA", 2, IndirectY},
 
-		0xAA: {1, "TAX", None},
-		0x8A: {1, "TXA", None},
-		0xCA: {1, "DEX", None},
-		0xE8: {1, "INX", None},
-		0xA8: {1, "TAY", None},
-		0x98: {1, "TYA", None},
-		0x88: {1, "DEY", None},
-		0xC8: {1, "INY", None},
+		{0xAA, "TAX", 1, None},
+		{0x8A, "TXA", 1, None},
+		{0xCA, "DEX", 1, None},
+		{0xE8, "INX", 1, None},
+		{0xA8, "TAY", 1, None},
+		{0x98, "TYA", 1, None},
+		{0x88, "DEY", 1, None},
+		{0xC8, "INY", 1, None},
 
-		0x2A: {1, "ROL", Accumulator},
-		0x26: {2, "ROL", ZeroPage},
-		0x36: {2, "ROL", ZeroPageX},
-		0x2E: {3, "ROL", Absolute},
-		0x3E: {3, "ROL", AbsoluteX},
+		{0x2A, "ROL", 1, Accumulator},
+		{0x26, "ROL", 2, ZeroPage},
+		{0x36, "ROL", 2, ZeroPageX},
+		{0x2E, "ROL", 3, Absolute},
+		{0x3E, "ROL", 3, AbsoluteX},
 
-		0x6A: {1, "ROR", Accumulator},
-		0x66: {2, "ROR", ZeroPage},
-		0x76: {2, "ROR", ZeroPageX},
-		0x6E: {3, "ROR", Absolute},
-		0x7E: {3, "ROR", AbsoluteX},
+		{0x6A, "ROR", 1, Accumulator},
+		{0x66, "ROR", 2, ZeroPage},
+		{0x76, "ROR", 2, ZeroPageX},
+		{0x6E, "ROR", 3, Absolute},
+		{0x7E, "ROR", 3, AbsoluteX},
 
-		0x40: {1, "RTI", None},
+		{0x40, "RTI", 1, None},
 
-		0x60: {1, "RTS", None},
+		{0x60, "RTS", 1, None},
 
-		0xE9: {2, "SBC", Immediate},
-		0xE5: {2, "SBC", ZeroPage},
-		0xF5: {2, "SBC", ZeroPageX},
-		0xED: {3, "SBC", Absolute},
-		0xFD: {3, "SBC", AbsoluteX},
-		0xF9: {3, "SBC", AbsoluteY},
-		0xE1: {2, "SBC", IndirectX},
-		0xF1: {2, "SBC", IndirectY},
+		{0xE9, "SBC", 2, Immediate},
+		{0xE5, "SBC", 2, ZeroPage},
+		{0xF5, "SBC", 2, ZeroPageX},
+		{0xED, "SBC", 3, Absolute},
+		{0xFD, "SBC", 3, AbsoluteX},
+		{0xF9, "SBC", 3, AbsoluteY},
+		{0xE1, "SBC", 2, IndirectX},
+		{0xF1, "SBC", 2, IndirectY},
 
-		0x47: {2, "SRE", ZeroPage},
-		0x57: {2, "SRE", ZeroPageX},
-		0x4F: {3, "SRE", Absolute},
-		0x5F: {3, "SRE", AbsoluteX},
-		0x5B: {3, "SRE", AbsoluteY},
-		0x43: {2, "SRE", IndirectX},
-		0x53: {2, "SRE", IndirectY},
+		{0x47, "SRE", 2, ZeroPage},
+		{0x57, "SRE", 2, ZeroPageX},
+		{0x4F, "SRE", 3, Absolute},
+		{0x5F, "SRE", 3, AbsoluteX},
+		{0x5B, "SRE", 3, AbsoluteY},
+		{0x43, "SRE", 2, IndirectX},
+		{0x53, "SRE", 2, IndirectY},
 
-		0x85: {2, "STA", ZeroPage},
-		0x95: {2, "STA", ZeroPageX},
-		0x8D: {3, "STA", Absolute},
-		0x9D: {3, "STA", AbsoluteX},
-		0x99: {3, "STA", AbsoluteY},
-		0x81: {2, "STA", IndirectX},
-		0x91: {2, "STA", IndirectY},
+		{0x85, "STA", 2, ZeroPage},
+		{0x95, "STA", 2, ZeroPageX},
+		{0x8D, "STA", 3, Absolute},
+		{0x9D, "STA", 3, AbsoluteX},
+		{0x99, "STA", 3, AbsoluteY},
+		{0x81, "STA", 2, IndirectX},
+		{0x91, "STA", 2, IndirectY},
 
-		0x9A: {1, "TXS", None},
-		0xBA: {1, "TSX", None},
-		0x48: {1, "PHA", None},
-		0x68: {1, "PLA", None},
-		0x08: {1, "PHP", None},
-		0x28: {1, "PLP", None},
+		{0x9A, "TXS", 1, None},
+		{0xBA, "TSX", 1, None},
+		{0x48, "PHA", 1, None},
+		{0x68, "PLA", 1, None},
+		{0x08, "PHP", 1, None},
+		{0x28, "PLP", 1, None},
 
-		0x07: {2, "SLO", ZeroPage},
-		0x17: {2, "SLO", ZeroPageX},
-		0x0F: {3, "SLO", Absolute},
-		0x1F: {3, "SLO", AbsoluteX},
-		0x1B: {3, "SLO", AbsoluteY},
-		0x03: {2, "SLO", IndirectX},
-		0x13: {2, "SLO", IndirectY},
+		{0x07, "SLO", 2, ZeroPage},
+		{0x17, "SLO", 2, ZeroPageX},
+		{0x0F, "SLO", 3, Absolute},
+		{0x1F, "SLO", 3, AbsoluteX},
+		{0x1B, "SLO", 3, AbsoluteY},
+		{0x03, "SLO", 2, IndirectX},
+		{0x13, "SLO", 2, IndirectY},
 
-		0x86: {2, "STX", ZeroPage},
-		0x96: {2, "STX", ZeroPageY},
-		0x8E: {3, "STX", Absolute},
+		{0x86, "STX", 2, ZeroPage},
+		{0x96, "STX", 2, ZeroPageY},
+		{0x8E, "STX", 3, Absolute},
 
-		0x84: {2, "STY", ZeroPage},
-		0x94: {2, "STY", ZeroPageX},
-		0x8C: {3, "STY", Absolute},
+		{0x84, "STY", 2, ZeroPage},
+		{0x94, "STY", 2, ZeroPageX},
+		{0x8C, "STY", 3, Absolute},
 	}
+
+	// OpCodesMap maps from opcode byte value to Opcode. Initialized by init()
+	OpCodesMap map[byte]Opcode
 
 	// UndocumentedInstructions is not exhaustive and only tracks the opcodes
 	// that are included in OpCodesMap.
@@ -321,15 +332,22 @@ const (
 	Jump
 )
 
-func (o *opcode) branchOrJump() branchType {
+func init() {
+	OpCodesMap = make(map[byte]Opcode)
+	for _, op := range OpCodes {
+		OpCodesMap[op.Value] = op
+	}
+}
+
+func (o *Opcode) branchOrJump() branchType {
 	for _, v := range branchInstructions {
-		if o.name == v {
+		if o.Name == v {
 			return Branch
 		}
 	}
 
 	for _, v := range jumpInstructions {
-		if o.name == v {
+		if o.Name == v {
 			return Jump
 		}
 	}
@@ -349,7 +367,7 @@ func findBranchTargets(program []uint8, maxBytes, offset, branchAdjust uint) {
 		b := program[cursor]
 
 		if op, ok := OpCodesMap[b]; ok {
-			instructions := program[cursor : cursor+op.length]
+			instructions := program[cursor : cursor+op.Length]
 
 			switch op.branchOrJump() {
 			case Branch:
@@ -368,7 +386,7 @@ func findBranchTargets(program []uint8, maxBytes, offset, branchAdjust uint) {
 				}
 			case Jump:
 				// Skip indirect jump since we don't know the target of the jump
-				if b != 0x6C {
+				if b != OpJMP_Indirect {
 					targ := (uint(instructions[2]) << 8) + uint(instructions[1])
 					if _, ok := branchTargets[targ]; !ok {
 						branchTargets[targ] = 0 // value will be filled out later
@@ -381,7 +399,7 @@ func findBranchTargets(program []uint8, maxBytes, offset, branchAdjust uint) {
 				}
 			case Neither:
 				// Check instructions with Absolute addressing
-				if op.addrMode == Absolute {
+				if op.AddrMode == Absolute {
 					targ := (uint(instructions[2]) << 8) + uint(instructions[1])
 					if _, ok := osVectorAddresses[targ]; ok {
 						usedOSVector[targ] = true
@@ -389,7 +407,7 @@ func findBranchTargets(program []uint8, maxBytes, offset, branchAdjust uint) {
 				}
 			}
 
-			cursor += op.length
+			cursor += op.Length
 		} else {
 			cursor++
 		}
@@ -418,9 +436,9 @@ func findBranchTargets(program []uint8, maxBytes, offset, branchAdjust uint) {
 	}
 }
 
-func decode(op opcode, bytes []byte, cursor, branchAdjust uint) string {
+func decode(op Opcode, bytes []byte, cursor, branchAdjust uint) string {
 	// Jump and Branch instructions have special handling
-	if bytes[0] == 0x4C || bytes[0] == 0x20 {
+	if bytes[0] == OpJMP_Absolute || bytes[0] == OpJSR_Absolute {
 		// JMP &1234 and JSR &1234 are special cased with naming for well known
 		// OS call entry points.
 		return genAbsoluteOsCall(bytes)
@@ -429,7 +447,7 @@ func decode(op opcode, bytes []byte, cursor, branchAdjust uint) string {
 		return genBranch(bytes, cursor, branchAdjust)
 	}
 
-	switch op.addrMode {
+	switch op.AddrMode {
 	case None:
 		return ""
 	case Accumulator:

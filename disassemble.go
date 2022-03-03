@@ -59,9 +59,9 @@ func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Write
 			//
 			// [instruction mnemonic]     \ [address] [instruction opcodes]   [printable bytes]
 			//                            ^--- 25th column                    ^--- 45th column
-			opcodes := program[cursor : cursor+op.length]
+			opcodes := program[cursor : cursor+op.Length]
 
-			sb.WriteString(op.name)
+			sb.WriteString(op.Name)
 			sb.WriteByte(' ')
 			sb.WriteString(decode(op, opcodes, cursor, branchAdjust))
 
@@ -78,7 +78,7 @@ func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Write
 
 			appendPrintableBytes(&sb, opcodes)
 
-			cursor += op.length
+			cursor += op.Length
 		} else {
 			ud := ok
 
@@ -94,7 +94,7 @@ func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Write
 				//
 				// EQUB [opcode],...,[opcode] \ [address] UD [instruction mnemonic]   [printable bytes]
 				//                            ^--- 25th column                        ^--- 45th column
-				bs = program[cursor : cursor+op.length]
+				bs = program[cursor : cursor+op.Length]
 			}
 
 			var out []string
@@ -112,7 +112,7 @@ func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Write
 			if ud {
 				// Undocumented instruction
 				sb.WriteString("UD ")
-				sb.WriteString(op.name)
+				sb.WriteString(op.Name)
 			} else {
 				// Data byte. Print out the data byte for visual consistency
 				sb.WriteString(fmt.Sprintf("%02X", bs[0]))
@@ -152,9 +152,9 @@ func max(a, b int) int {
 	return a
 }
 
-func isOpcodeDocumented(op opcode) bool {
+func isOpcodeDocumented(op Opcode) bool {
 	for _, u := range UndocumentedInstructions {
-		if op.name == u {
+		if op.Name == u {
 			return false
 		}
 	}
