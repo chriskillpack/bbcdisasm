@@ -1,4 +1,4 @@
-module bbc-disasm
+module bbcdisasm
 
 go 1.17
 

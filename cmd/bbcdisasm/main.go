@@ -1,7 +1,7 @@
 package main
 
 import (
-	bbc "bbc-disasm"
+	"bbcdisasm"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -18,7 +18,7 @@ func listDFS(file string) error {
 		return err
 	}
 
-	img := bbc.ParseDFS(data)
+	img := bbcdisasm.ParseDFS(data)
 	fmt.Printf("Disk Title  %s\n", img.Title)
 	fmt.Printf("Num Files   %d\n", len(img.Files))
 	fmt.Printf("Num Sectors %d\n", img.Sectors)
@@ -39,7 +39,7 @@ func disasmFile(file string, offset, length int64, loadAddress uint) error {
 		return err
 	}
 
-	bbc.Disassemble(data, uint(length), uint(offset), loadAddress, os.Stdout)
+	bbcdisasm.Disassemble(data, uint(length), uint(offset), loadAddress, os.Stdout)
 	return nil
 }
 
@@ -75,7 +75,7 @@ func extractFromDfs(file string, entries []string, outDir string) error {
 		em[entry] = true
 	}
 
-	img := bbc.ParseDFS(data)
+	img := bbcdisasm.ParseDFS(data)
 	for _, f := range img.Files {
 		if len(entries) == 0 || em[f.Filename] {
 			// Retrieve data contents
@@ -103,7 +103,7 @@ func fileLength(filename string) (int64, error) {
 
 func main() {
 	app := cli.NewApp()
-	app.Name = "bbc-disasm"
+	app.Name = "bbcdisasm"
 	app.Usage = "Tool to extract and disassemble programs from BBC Micro DFS disk images"
 	app.Action = func(c *cli.Context) error {
 		cli.ShowAppHelp(c)

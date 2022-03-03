@@ -7,7 +7,7 @@ A work in progress disassembler for 6502 programs and Acorn DFS disk image extra
 Requires a version of Go that supports modules.
 
 ```bash
-$ go build ./cmd/bbc-disasm
+$ go install ./cmd/bbcdisasm
 ```
 
 ## Usage
@@ -16,7 +16,7 @@ $ go build ./cmd/bbc-disasm
 List the contents of a DFS image, in this case Exile one of my favorite BBC B games and an amazing technical achievement in 32Kb of RAM.
 
 ```
-$ bbc-disasm list images/Exile.ssd
+$ bbcdisasm list images/Exile.ssd
 Disk Title  EXILE
 Num Files   7
 Num Sectors 800
@@ -38,19 +38,19 @@ EXILE     1A80   00033000 00034A10   2
 Let's extract EXILE program from the Exile.ssd image into the current directory
 
 ```bash
-$ bbc-disasm extract images/Exile.ssd EXILE
+$ bbcdisasm extract images/Exile.ssd EXILE
 ```
 
 Or we can extract all the files from an image, again into the current directory
 
 ```bash
-$ bbc-disasm extract images/Exile.ssd
+$ bbcdisasm extract images/Exile.ssd
 ```
 
 To extract only EXILE and ExileL to subdirectory `out`
 
 ```bash
-$ bbc-disasm extract --outdir out images/Exile.ssd EXILE ExileL
+$ bbcdisasm extract --outdir out images/Exile.ssd EXILE ExileL
 ```
 
 ### Disassemble a file
@@ -60,7 +60,7 @@ This is a simple 2-pass 6502 byte-code disassembler that uses light knowledge of
 Let's disassemble the first non-BASIC program in the Exile disk image, EXILE, starting from it's execution point. The output below shows labelled branch targets and identification of OS entry point addresses.
 
 ```
-$ bbc-disasm disasm --loadaddr 0x3000 EXILE 0x1A10
+$ bbcdisasm disasm --loadaddr 0x3000 EXILE 0x1A10
 ...
 CODE% = &3000
 
@@ -94,7 +94,7 @@ The `--loadaddr` options instructs the disassembler to 'relocate' the program to
 By default `disasm` will disassemble the entire file though this can be limited by the optional final length argument. The disassembler will complete disassembly of an instruction if it straddles the length. In the example below the disassembler processes 9 bytes even though only 8 were asked for, because the final instruction straddles the 8 byte boundary:
 
 ```
-$ bbc-disasm d --loadaddr 0x3000 exile/EXILE 0x1A10 8
+$ bbcdisasm d --loadaddr 0x3000 exile/EXILE 0x1A10 8
 ...
  LDA #&C8               \ &4A10 A9 C8       ..
  LDX #&03               \ &4A12 A2 03       ..
@@ -112,7 +112,7 @@ It is very common for BBC micro programs to store data amongst code. The disasse
 
 #### Undocumented instructions
 
-There is very limited support for undocumented instructions in the 6502. This is partly because beebasm, the targeted assembler, does not support them. In order to preserve binary compatibility `bbc-disasm` will emit the opcode bytes of the instruction as an `EQUB` directive and comment the line with `UD` (UnDocumented) together with a very limited instruction mnemonic.
+There is very limited support for undocumented instructions in the 6502. This is partly because beebasm, the targeted assembler, does not support them. In order to preserve binary compatibility `bbcdisasm` will emit the opcode bytes of the instruction as an `EQUB` directive and comment the line with `UD` (UnDocumented) together with a very limited instruction mnemonic.
 
 The byte sequence `&53,&63` disassembles to `SRE (&63),Y`, an undocumented instruction, and will be output as
 ```

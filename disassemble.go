@@ -164,7 +164,7 @@ func isOpcodeDocumented(op Opcode) bool {
 
 var disasmHeader = `\ ******************************************************************************
 \
-\ This disassembly was produced by bbc-disasm
+\ This disassembly was produced by bbcdisasm
 \
 \ ******************************************************************************
 
