@@ -55,7 +55,7 @@ $ bbcdisasm extract --outdir out images/Exile.ssd EXILE ExileL
 
 ### Disassemble a file
 
-This is a simple 2-pass 6502 byte-code disassembler that uses light knowledge of the BBC Micro memory map to replace well known memory address with their names, e.g. `0xFFF7` is the `OSCLI` entry point.
+This is a simple 2-pass 6502 byte-code disassembler that uses light knowledge of the BBC Micro memory map to replace well known memory address with their names, e.g. `0xFFF7` is the `OSCLI` entry point. The disassembler output is compatible with beebasm. A primary goal of the disassembler is assembling the disassembler output should yield a result identical with the binary input to the disassembler.
 
 Let's disassemble the first non-BASIC program in the Exile disk image, EXILE, starting from it's execution point. The output below shows labelled branch targets and identification of OS entry point addresses.
 
@@ -101,6 +101,10 @@ $ bbcdisasm d --loadaddr 0x3000 exile/EXILE 0x1A10 8
  LDY #&00               \ &4A14 A0 00       ..
  JSR OSBYTE             \ &4A16 20 F4 FF     ..
 ```
+
+#### beebasm workaround
+
+beebasm has a trait that need to be worked around, "zero page replacement". In this situation an instruction with an absolute address in the zero-page is replaced with the zero page form of the instruction, e.g. `LDA &0012` (`AD`, `12`, `00`) will be assembled as `LDA &12` (`A5`, `12`). This break binary compatibility. The disassembler will identify instructions where this will happen and emit instead as a data sequence `EQUB &AD, &12, &00`. This situation generally happens when disassembling data, as written code will prefer the zero page form as it is faster and uses less bytes.
 
 #### Unknown instructions
 

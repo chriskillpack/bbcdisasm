@@ -47,84 +47,98 @@ func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Write
 			sb.Reset()
 		}
 
-		// All instructions are at least one byte long and the first
-		// byte is sufficient to identify the instruction.
-		b := program[cursor]
-
 		sb.WriteByte(' ')
 
+		// All instructions are at least one byte long and the first byte is
+		// sufficient to identify the opcode.
+		b := program[cursor]
+
+		// Situations that can arise decoding the next instruction
+		// 1) If the byte does not match an opcode - print as data
+		// 2) If the byte matches a documented opcode:
+		//      If the instruction won't assemble identically then print as data
+		//      Otherwise, decode operands and print
+		// 3) If the byte matches an undocumented opcode:
+		//      Retrieve operands, print as data, mark UD
 		op, ok := OpCodesMap[b]
-		if ok && isOpcodeDocumented(op) {
-			// A valid instruction will be printed to a line with format
-			//
-			// [instruction mnemonic]     \ [address] [instruction opcodes]   [printable bytes]
-			//                            ^--- 25th column                    ^--- 45th column
-			opcodes := program[cursor : cursor+op.Length]
+		if ok {
+			instruction := program[cursor : cursor+op.Length]
+			doc := isOpcodeDocumented(op)
+			wai := willAssembleIdentically(op, instruction)
+			if doc && wai {
+				// If here then documented instruction that will assemble correctly
+				printInstruction(&sb, op, instruction, cursor, branchAdjust)
 
-			sb.WriteString(op.Name)
-			sb.WriteByte(' ')
-			sb.WriteString(decode(op, opcodes, cursor, branchAdjust))
-
-			appendSpaces(&sb, max(24-sb.Len(), 1))
-			sb.WriteString("\\ ")
-
-			out := []string{
-				fmt.Sprintf("&%04X", cursor+branchAdjust),
-			}
-			for _, i := range opcodes {
-				out = append(out, fmt.Sprintf("%02X", i))
-			}
-			sb.WriteString(strings.Join(out, " "))
-
-			appendPrintableBytes(&sb, opcodes)
-
-			cursor += op.Length
-		} else {
-			ud := ok
-
-			// If the opcode is unrecognized then it is treated as data and
-			// formatted
-			//
-			// EQUB &[opcode]    \ [address] [opcode]   [printable bytes]
-			//                   ^--- 25th column       ^--- 45th column
-			bs := []byte{b}
-			if ud {
-				// If the opcode is recognized then it must be an undocumented
-				// instruction (UD). Formatting
-				//
-				// EQUB [opcode],...,[opcode] \ [address] UD [instruction mnemonic]   [printable bytes]
-				//                            ^--- 25th column                        ^--- 45th column
-				bs = program[cursor : cursor+op.Length]
-			}
-
-			var out []string
-			for _, i := range bs {
-				out = append(out, fmt.Sprintf("&%02X", i))
-			}
-			sb.WriteString("EQUB ")
-			sb.WriteString(strings.Join(out, ","))
-
-			appendSpaces(&sb, max(24-sb.Len(), 1))
-			sb.WriteString("\\ ")
-			sb.WriteString(fmt.Sprintf("&%04X", cursor+branchAdjust))
-			sb.WriteByte(' ')
-
-			if ud {
-				// Undocumented instruction
-				sb.WriteString("UD ")
-				sb.WriteString(op.Name)
+				cursor += op.Length
 			} else {
-				// Data byte. Print out the data byte for visual consistency
-				sb.WriteString(fmt.Sprintf("%02X", bs[0]))
+				// The instruction is undocumented or beebasm will not assemble to the same bytes,
+				// so the instruction is treated as data.
+				printData(&sb, instruction, cursor+branchAdjust)
+
+				if !doc {
+					// Undocumented instruction includes additional info before printable bytes
+					// EQUB [opcode],...,[opcode] \ [address] UD [instruction mnemonic]   [printable bytes]
+					//                            ^--- 25th column                        ^--- 45th column
+					sb.WriteString("UD ")
+					sb.WriteString(op.Name)
+				}
+
+				appendPrintableBytes(&sb, instruction)
+
+				cursor += uint(len(instruction))
 			}
-
+		} else {
+			bs := []byte{b}
+			printData(&sb, bs, cursor+branchAdjust)
 			appendPrintableBytes(&sb, bs)
-
-			cursor += uint(len(bs))
+			cursor++
 		}
+
 		sb.WriteByte('\n')
 		w.Write([]byte(sb.String()))
 	}
+}
+
+func printInstruction(sb *strings.Builder, op Opcode, instruction []byte, cursor, branchAdjust uint) {
+	// A valid instruction will be printed to a line with format
+	//
+	// [instruction mnemonic]     \ [address] [instruction opcodes]   [printable bytes]
+	//                            ^--- 25th column                    ^--- 45th column
+	sb.WriteString(op.Name)
+	sb.WriteByte(' ')
+	sb.WriteString(decode(op, instruction, cursor, branchAdjust))
+
+	appendSpaces(sb, max(24-sb.Len(), 1))
+	sb.WriteString("\\ ")
+
+	out := []string{
+		fmt.Sprintf("&%04X", cursor+branchAdjust),
+	}
+	for _, i := range instruction {
+		out = append(out, fmt.Sprintf("%02X", i))
+	}
+	sb.WriteString(strings.Join(out, " "))
+
+	appendPrintableBytes(sb, instruction)
+}
+
+// Print data in hex as comma-delimited EQUB statement. Assumes that there are
+// between 1 and 3 data bytes though it will handle any amount.
+func printData(sb *strings.Builder, data []byte, address uint) {
+	// Data will be printed to a line with format
+	// EQUB &[byte],...,&[byte]    \ [address] [opcode]   [printable bytes]
+	//                             ^--- 25th column       ^--- 45th column
+	var out []string
+	for _, i := range data {
+		out = append(out, fmt.Sprintf("&%02X", i))
+	}
+	sb.WriteString("EQUB ")
+	sb.WriteString(strings.Join(out, ","))
+
+	appendSpaces(sb, max(24-sb.Len(), 1))
+	sb.WriteString("\\ ")
+	sb.WriteString(fmt.Sprintf("&%04X", address))
+	sb.WriteByte(' ')
 }
 
 func appendSpaces(sb *strings.Builder, ns int) {
@@ -155,6 +169,22 @@ func max(a, b int) int {
 func isOpcodeDocumented(op Opcode) bool {
 	for _, u := range UndocumentedInstructions {
 		if op.Name == u {
+			return false
+		}
+	}
+
+	return true
+}
+
+// willAssembleIdentically checks if beebasm will assemble the instruction as written
+//
+// Given an instruction with a 16-bit absolute address operand that lies in the
+// Zero Page e.g. LDA &0012, beebasm will instead assemble using the zero page
+// form if supported, e.g. LDA &12. This behavior breaks binary compatibility.
+func willAssembleIdentically(op Opcode, instruction []byte) bool {
+	if op.AddrMode == Absolute || op.AddrMode == AbsoluteX || op.AddrMode == AbsoluteY {
+		tgt := (uint(instruction[2]) << 8) + uint(instruction[1])
+		if tgt < 0x100 {
 			return false
 		}
 	}
