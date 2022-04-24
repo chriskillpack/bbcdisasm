@@ -4,22 +4,48 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"text/template"
 )
 
-// Disassemble prints a 6502 program to stdout
+// Disassembler converts byte code to a textual representation
+type Disassembler struct {
+	Program      []byte
+	MaxBytes     uint
+	Offset       uint
+	BranchAdjust uint
+	CodeAddrs    []uint
+
+	usedOSAddress map[uint]bool
+	usedOSVector  map[uint]bool
+}
+
+// NewDisassembler initializes a new Disassembler with the target progrsm
+func NewDisassembler(program []byte) *Disassembler {
+	return &Disassembler{
+		Program:       program,
+		usedOSAddress: make(map[uint]bool),
+		usedOSVector:  make(map[uint]bool),
+	}
+}
+
+// Disassemble a 6502 program into a textual representation written to w
 // offset is where disassembly starts from the beginning of program.
 // branchAdjust is used to adjust the target address of relative branches to a
 // 'meaningful' address, typically the load address of the program.
-func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Writer) {
-	usedOSAddress = make(map[uint]bool)
-	usedOSVector = make(map[uint]bool)
+func (d *Disassembler) Disassemble(w io.Writer) {
+	if len(d.CodeAddrs) > 0 {
+		sort.Slice(d.CodeAddrs, func(i, j int) bool { return d.CodeAddrs[i] < d.CodeAddrs[j] })
 
-	// First pass through program is to find the location
-	// of any branches. These will be marked as labels in
-	// the output.
-	findBranchTargets(program, maxBytes, offset, branchAdjust)
+		for i, ca := range d.CodeAddrs {
+			d.CodeAddrs[i] = ca - d.BranchAdjust
+		}
+	}
+
+	// First pass through program is to find the location of any branches. These
+	// will be marked as labels in the output.
+	d.findBranchTargets()
 
 	distem, _ := template.New("disasm").Parse(disasmHeader)
 	data := struct {
@@ -28,17 +54,30 @@ func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Write
 		UsedOSVector  map[uint]bool
 		OSVector      map[uint]string
 		LoadAddr      uint
-	}{usedOSAddress, addressToOsCallName, usedOSVector, osVectorAddresses, branchAdjust}
+	}{d.usedOSAddress, addressToOsCallName, d.usedOSVector, osVectorAddresses, d.BranchAdjust}
 	if err := distem.Execute(w, data); err != nil {
 		panic(err)
 	}
 
 	// Second pass through program is to decode each instruction
 	// and print to stdout.
-	cursor := offset
-	for cursor < (offset + maxBytes) {
+	cursor := d.Offset
+	prevCur := cursor
+	codeAddrIdx := 0
+	for cursor < (d.Offset + d.MaxBytes) {
+		// Do we have remaining code addresses?
+		if codeAddrIdx < len(d.CodeAddrs) {
+			// If we overstepped the next code address, pull the cursor back
+			ca := d.CodeAddrs[codeAddrIdx]
+			if prevCur < ca && cursor >= ca {
+				cursor = ca
+				codeAddrIdx++
+			}
+		}
+		prevCur = cursor
+
 		var sb strings.Builder
-		if targetIdx, ok := branchTargets[cursor+branchAdjust]; ok {
+		if targetIdx, ok := branchTargets[cursor+d.BranchAdjust]; ok {
 			sb.WriteByte('.')
 			sb.WriteString(fmt.Sprintf(labelFormatString, targetIdx))
 			sb.WriteString("\n")
@@ -51,29 +90,50 @@ func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Write
 
 		// All instructions are at least one byte long and the first byte is
 		// sufficient to identify the opcode.
-		b := program[cursor]
+		b := d.Program[cursor]
 
 		// Situations that can arise decoding the next instruction
 		// 1) If the byte does not match an opcode - print as data
 		// 2) If the byte matches a documented opcode:
-		//      If the instruction won't assemble identically then print as data
-		//      Otherwise, decode operands and print
+		//    a) If the instruction won't assemble identically then print as
+		//       data.
+		//    b) If the instruction straddles a targeted code address then print
+		//       as data the bytes up to the targeted address.
+		//    c) Otherwise, decode operands and print.
 		// 3) If the byte matches an undocumented opcode:
-		//      Retrieve operands, print as data, mark UD
+		//    a) If the instruction straddles a targeted code address then print
+		//       as data the bytes up to the targeted address.
+		//    b) Otherwise retrieve operands, print as data, mark UD
 		op, ok := OpCodesMap[b]
 		if ok {
-			instruction := program[cursor : cursor+op.Length]
+			instruction := d.Program[cursor : cursor+op.Length]
 			doc := isOpcodeDocumented(op)
 			wai := willAssembleIdentically(op, instruction)
-			if doc && wai {
+
+			var straddles bool
+			if codeAddrIdx < len(d.CodeAddrs) {
+				straddles = cursor+op.Length >= d.CodeAddrs[codeAddrIdx]
+			}
+
+			if doc && wai && !straddles {
 				// If here then documented instruction that will assemble correctly
-				printInstruction(&sb, op, instruction, cursor, branchAdjust)
+				printInstruction(&sb, op, instruction, cursor, d.BranchAdjust)
 
 				cursor += op.Length
 			} else {
-				// The instruction is undocumented or beebasm will not assemble to the same bytes,
-				// so the instruction is treated as data.
-				printData(&sb, instruction, cursor+branchAdjust)
+				// The opcode was unrecognized, the opcode belongs to an
+				// undocumented instruction, the instruction will straddle a
+				// targeted code address or beebasm will not assemble
+				// to the same bytes. In these cases treat it as data.
+
+				// If the data block straddles a targeted code address then trim
+				// to the address.
+				if straddles {
+					nb := d.CodeAddrs[codeAddrIdx] - cursor
+					instruction = instruction[:nb]
+				}
+
+				printData(&sb, instruction, cursor+d.BranchAdjust)
 
 				if !doc {
 					// Undocumented instruction includes additional info before printable bytes
@@ -89,7 +149,7 @@ func Disassemble(program []byte, maxBytes, offset, branchAdjust uint, w io.Write
 			}
 		} else {
 			bs := []byte{b}
-			printData(&sb, bs, cursor+branchAdjust)
+			printData(&sb, bs, cursor+d.BranchAdjust)
 			appendPrintableBytes(&sb, bs)
 			cursor++
 		}
@@ -190,6 +250,110 @@ func willAssembleIdentically(op Opcode, instruction []byte) bool {
 	}
 
 	return true
+}
+
+func (d *Disassembler) findBranchTargets() {
+	// Track all reachable instructions. That is the address of the first
+	// opcode of each instruction starting at offset and moving forwards.
+	iloc := make(map[uint]bool)
+
+	branchTargets = make(map[uint]int)
+	cursor := d.Offset
+	prevCur := cursor
+	codeAddrIdx := 0
+	for cursor < (d.Offset + d.MaxBytes) {
+		// Do we have remaining code addresses?
+		if codeAddrIdx < len(d.CodeAddrs) {
+			// If we overstepped the next code address, pull the cursor back
+			ca := d.CodeAddrs[codeAddrIdx] - d.BranchAdjust
+			if prevCur < ca && cursor >= ca {
+				cursor = ca
+				codeAddrIdx++
+			}
+		}
+		prevCur = cursor
+
+		iloc[cursor+d.BranchAdjust] = true // Reachable instruction
+		b := d.Program[cursor]
+
+		if op, ok := OpCodesMap[b]; ok {
+			// If the decoded 'instruction' (it could be data) straddles a
+			// targeted code address then skip over it and move the cursor to
+			// the code address.
+			if codeAddrIdx < len(d.CodeAddrs) {
+				if cursor+op.Length > d.CodeAddrs[codeAddrIdx] {
+					cursor += d.CodeAddrs[codeAddrIdx] - cursor
+					codeAddrIdx++
+					continue
+				}
+			}
+
+			instruction := d.Program[cursor : cursor+op.Length]
+			switch op.branchOrJump() {
+			case Branch:
+				// This is ugly but it will do for now
+				boff := int(instruction[1]) // All branches are 2 bytes long
+				if boff > 127 {
+					boff = boff - 256
+				}
+				// Adjust d.Offset to account for the 2 byte behavior, see
+				// genBranch().
+				boff += 2
+
+				tgt := cursor + uint(boff) + d.BranchAdjust
+				if _, ok := branchTargets[tgt]; !ok {
+					branchTargets[tgt] = 0 // value will be filled out later
+				}
+			case Jump:
+				// Skip indirect jump since we don't know the target of the jump
+				if b != OpJMP_Indirect {
+					tgt := (uint(instruction[2]) << 8) + uint(instruction[1])
+					if _, ok := branchTargets[tgt]; !ok {
+						branchTargets[tgt] = 0 // value will be filled out later
+					}
+
+					// If the jump target is a well known OS call then mark as seen
+					if _, ok := addressToOsCallName[tgt]; ok {
+						d.usedOSAddress[tgt] = true
+					}
+				}
+			case Neither:
+				// Check instructions with Absolute addressing
+				if op.AddrMode == Absolute {
+					tgt := (uint(instruction[2]) << 8) + uint(instruction[1])
+					if _, ok := osVectorAddresses[tgt]; ok {
+						d.usedOSVector[tgt] = true
+					}
+				}
+			}
+
+			cursor += uint(len(instruction))
+		} else {
+			cursor++
+		}
+	}
+
+	// Reject branch targets that point to unreachable instructions. This can
+	// happen disassembling data and the byte values generate a branch
+	// instruction with a relative address that does not point to the beginning
+	// of a reachable instruction.
+	for k := range branchTargets {
+		if _, ok := iloc[k]; !ok {
+			delete(branchTargets, k)
+		}
+	}
+
+	// Sort branch targets in order of increasing address
+	bt := make([]int, len(branchTargets))
+	i := 0
+	for k := range branchTargets {
+		bt[i] = int(k)
+		i++
+	}
+	sort.Ints(bt)
+	for i, v := range bt {
+		branchTargets[uint(v)] = i
+	}
 }
 
 var disasmHeader = `\ ******************************************************************************

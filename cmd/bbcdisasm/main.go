@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"strings"
 
 	cli "github.com/urfave/cli/v2"
 )
@@ -33,14 +34,13 @@ func listDFS(file string) error {
 	return nil
 }
 
-func disasmFile(file string, offset, length int64, loadAddress uint) error {
+func disassemblerForFile(file string) (*bbcdisasm.Disassembler, error) {
 	data, err := ioutil.ReadFile(file)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	bbcdisasm.Disassemble(data, uint(length), uint(offset), loadAddress, os.Stdout)
-	return nil
+	return bbcdisasm.NewDisassembler(data), nil
 }
 
 func extractFromDfs(file string, entries []string, outDir string) error {
@@ -193,13 +193,40 @@ func main() {
 					}
 				}
 
-				return disasmFile(file, offset, length, uint(c.Int("loadaddr")))
+				disasm, err := disassemblerForFile(file)
+				if err != nil {
+					return cli.Exit(err, 1)
+				}
+				disasm.MaxBytes = uint(length)
+				disasm.Offset = uint(offset)
+				disasm.BranchAdjust = uint(c.Int("loadaddr"))
+
+				caddrs := c.String("codeaddrs")
+				if len(caddrs) > 0 {
+					saddrs := strings.Split(caddrs, ",")
+					for _, addr := range saddrs {
+						i, err := strconv.ParseInt(addr, 0, 64)
+						if err != nil {
+							return cli.Exit("Could not parse address", 1)
+						}
+						if i < 0 {
+							return cli.Exit("Invalid address", 1)
+						}
+						disasm.CodeAddrs = append(disasm.CodeAddrs, uint(i))
+					}
+				}
+
+				disasm.Disassemble(os.Stdout)
+				return nil
 			},
 			Flags: []cli.Flag{
 				&cli.IntFlag{
 					Name:  "loadaddr",
-					Value: 0,
 					Usage: "load address for the code",
+				},
+				&cli.StringFlag{
+					Name:  "codeaddrs",
+					Usage: "locations of known code",
 				},
 			},
 		},

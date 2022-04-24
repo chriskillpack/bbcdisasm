@@ -2,7 +2,6 @@ package bbcdisasm
 
 import (
 	"fmt"
-	"sort"
 )
 
 const labelFormatString = "label_%d"
@@ -320,8 +319,6 @@ var (
 	}
 
 	branchTargets map[uint]int
-	usedOSAddress map[uint]bool
-	usedOSVector  map[uint]bool
 )
 
 type branchType int
@@ -353,87 +350,6 @@ func (o *Opcode) branchOrJump() branchType {
 	}
 
 	return Neither
-}
-
-func findBranchTargets(program []uint8, maxBytes, offset, branchAdjust uint) {
-	// Track all reachable instructions. That is the address of the first
-	// opcode of each instruction starting at offset and moving forwards.
-	iloc := make(map[uint]bool)
-
-	branchTargets = make(map[uint]int)
-	cursor := offset
-	for cursor < (offset + maxBytes) {
-		iloc[cursor+branchAdjust] = true // Reachable instruction
-		b := program[cursor]
-
-		if op, ok := OpCodesMap[b]; ok {
-			instructions := program[cursor : cursor+op.Length]
-
-			switch op.branchOrJump() {
-			case Branch:
-				// This is ugly but it will do for now
-				boff := int(instructions[1]) // All branches are 2 bytes long
-				if boff > 127 {
-					boff = boff - 256
-				}
-				// Adjust offset to account for the 2 byte behavior, see
-				// genBranch().
-				boff += 2
-
-				tgt := cursor + uint(boff) + branchAdjust
-				if _, ok := branchTargets[tgt]; !ok {
-					branchTargets[tgt] = 0 // value will be filled out later
-				}
-			case Jump:
-				// Skip indirect jump since we don't know the target of the jump
-				if b != OpJMP_Indirect {
-					tgt := (uint(instructions[2]) << 8) + uint(instructions[1])
-					if _, ok := branchTargets[tgt]; !ok {
-						branchTargets[tgt] = 0 // value will be filled out later
-					}
-
-					// If the jump target is a well known OS call then mark as seen
-					if _, ok := addressToOsCallName[tgt]; ok {
-						usedOSAddress[tgt] = true
-					}
-				}
-			case Neither:
-				// Check instructions with Absolute addressing
-				if op.AddrMode == Absolute {
-					tgt := (uint(instructions[2]) << 8) + uint(instructions[1])
-					if _, ok := osVectorAddresses[tgt]; ok {
-						usedOSVector[tgt] = true
-					}
-				}
-			}
-
-			cursor += op.Length
-		} else {
-			cursor++
-		}
-	}
-
-	// Reject branch targets that point to unreachable instructions. This can
-	// happen disassembling data and the byte values generate a branch
-	// instruction with a relative address that does not point to the beginning
-	// of a reachable instruction.
-	for k := range branchTargets {
-		if _, ok := iloc[k]; !ok {
-			delete(branchTargets, k)
-		}
-	}
-
-	// Sort branch targets in order of increasing address
-	bt := make([]int, len(branchTargets))
-	i := 0
-	for k := range branchTargets {
-		bt[i] = int(k)
-		i++
-	}
-	sort.Ints(bt)
-	for i, v := range bt {
-		branchTargets[uint(v)] = i
-	}
 }
 
 func decode(op Opcode, bytes []byte, cursor, branchAdjust uint) string {

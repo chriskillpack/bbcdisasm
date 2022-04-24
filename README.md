@@ -89,7 +89,9 @@ CODE% = &3000
  ...
 ```
 
-The `--loadaddr` options instructs the disassembler to 'relocate' the program to a different memory address. This is to match the actual memory address DFS will place the file contents. TODO: Apply loadaddr to the execution address.
+The `--loadaddr` option instructs the disassembler to 'relocate' the program to a different memory address. This is to match the actual memory address DFS will place the file contents. TODO: Apply loadaddr to the execution address.
+
+The `--codeaddrs` option takes a comma-seperated list of addresses that the disassembler should treat as code and ensure that they are not skipped during disassembly. This is helpful in cases where data bytes ahead of the addressed match multibyte opcodes that cause the disassembler to miss important addresses.
 
 By default `disasm` will disassemble the entire file though this can be limited by the optional final length argument. The disassembler will complete disassembly of an instruction if it straddles the length. In the example below the disassembler processes 9 bytes even though only 8 were asked for, because the final instruction straddles the 8 byte boundary:
 
@@ -126,4 +128,4 @@ The byte sequence `&53,&63` disassembles to `SRE (&63),Y`, an undocumented instr
 ## TODO
 
 * Improved BBC Micro memory map support in the disassembler
-* Restart points in the disassembler to ensure disassembly doesn't miss the start of program code
+* User supplied variable list
