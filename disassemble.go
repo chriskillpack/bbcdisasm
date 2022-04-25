@@ -11,11 +11,19 @@ import (
 
 // Disassembler converts byte code to a textual representation
 type Disassembler struct {
-	Program      []byte
-	MaxBytes     uint
-	Offset       uint
+	Program  []byte // The 6502 program to be disassembled
+	MaxBytes uint   // Maximum number of program bytes to disassemble
+	Offset   uint   // Starting offset to begin disassembly
+
+	// The load address of the program, required to correctly compute absolute
+	// addresses for relative branches.
 	BranchAdjust uint
-	CodeAddrs    []uint
+
+	// The set of addresses in the program that the disassembler should ensure
+	// to disassemble. This is useful in cases where the disassembler skips
+	// addresses due to misinterpreting data bytes as opcodes.
+	// Will be modified by Disassemble().
+	CodeAddrs []uint
 
 	usedOSAddress map[uint]bool
 	usedOSVector  map[uint]bool
@@ -290,7 +298,7 @@ func (d *Disassembler) findBranchTargets() {
 
 			instruction := d.Program[cursor : cursor+op.Length]
 			switch op.branchOrJump() {
-			case Branch:
+			case btBranch:
 				// This is ugly but it will do for now
 				boff := int(instruction[1]) // All branches are 2 bytes long
 				if boff > 127 {
@@ -304,9 +312,9 @@ func (d *Disassembler) findBranchTargets() {
 				if _, ok := branchTargets[tgt]; !ok {
 					branchTargets[tgt] = 0 // value will be filled out later
 				}
-			case Jump:
+			case btJump:
 				// Skip indirect jump since we don't know the target of the jump
-				if b != OpJMP_Indirect {
+				if b != OpJMPIndirect {
 					tgt := (uint(instruction[2]) << 8) + uint(instruction[1])
 					if _, ok := branchTargets[tgt]; !ok {
 						branchTargets[tgt] = 0 // value will be filled out later
@@ -317,7 +325,7 @@ func (d *Disassembler) findBranchTargets() {
 						d.usedOSAddress[tgt] = true
 					}
 				}
-			case Neither:
+			case btNeither:
 				// Check instructions with Absolute addressing
 				if op.AddrMode == Absolute {
 					tgt := (uint(instruction[2]) << 8) + uint(instruction[1])

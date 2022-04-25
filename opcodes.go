@@ -47,12 +47,14 @@ type Opcode struct {
 
 // TODO - Constants for all instructions?
 const (
-	OpJMP_Absolute = 0x4C
-	OpJMP_Indirect = 0x6C
-	OpJSR_Absolute = 0x20
+	OpJMPAbsolute = 0x4C
+	OpJMPIndirect = 0x6C
+	OpJSRAbsolute = 0x20
 )
 
 var (
+	// OpCodes defines the documented instructions of the 6502 CPU. It also
+	// includes a couple of undocumented instructions.
 	// Most opcodes from http://www.6502.org/tutorials/6502opcodes.html
 	// ANC, SLO, SRE from https://github.com/mattgodbolt/jsbeeb/blob/master/6502.opcodes.js
 	OpCodes = []Opcode{
@@ -141,10 +143,10 @@ var (
 		{0xEE, "INC", 3, Absolute},
 		{0xFE, "INC", 3, AbsoluteX},
 
-		{OpJMP_Absolute, "JMP", 3, Absolute}, // special cased when printing
-		{OpJMP_Indirect, "JMP", 3, Indirect},
+		{OpJMPAbsolute, "JMP", 3, Absolute}, // special cased when printing
+		{OpJMPIndirect, "JMP", 3, Indirect},
 
-		{OpJSR_Absolute, "JSR", 3, Absolute}, // special cased when printing
+		{OpJSRAbsolute, "JSR", 3, Absolute}, // special cased when printing
 
 		{0xA9, "LDA", 2, Immediate},
 		{0xA5, "LDA", 2, ZeroPage},
@@ -324,9 +326,9 @@ var (
 type branchType int
 
 const (
-	Neither branchType = iota
-	Branch
-	Jump
+	btNeither branchType = iota
+	btBranch
+	btJump
 )
 
 func init() {
@@ -339,27 +341,27 @@ func init() {
 func (o *Opcode) branchOrJump() branchType {
 	for _, v := range branchInstructions {
 		if o.Name == v {
-			return Branch
+			return btBranch
 		}
 	}
 
 	for _, v := range jumpInstructions {
 		if o.Name == v {
-			return Jump
+			return btJump
 		}
 	}
 
-	return Neither
+	return btNeither
 }
 
 func decode(op Opcode, bytes []byte, cursor, branchAdjust uint) string {
 	// Jump and Branch instructions have special handling
-	if bytes[0] == OpJMP_Absolute || bytes[0] == OpJSR_Absolute {
+	if bytes[0] == OpJMPAbsolute || bytes[0] == OpJSRAbsolute {
 		// JMP &1234 and JSR &1234 are special cased with naming for well known
 		// OS call entry points.
 		return genAbsoluteOsCall(bytes)
 	}
-	if op.branchOrJump() == Branch {
+	if op.branchOrJump() == btBranch {
 		return genBranch(bytes, cursor, branchAdjust)
 	}
 
