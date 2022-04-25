@@ -141,7 +141,10 @@ func (d *Disassembler) Disassemble(w io.Writer) {
 					instruction = instruction[:nb]
 				}
 
-				printData(&sb, instruction, cursor+d.BranchAdjust)
+				// Include data bytes in comment section for visual consistency
+				// if the instruction is documented. Non documented instructions
+				// will print something else.
+				printData(&sb, instruction, doc, cursor+d.BranchAdjust)
 
 				if !doc {
 					// Undocumented instruction includes additional info before printable bytes
@@ -157,7 +160,7 @@ func (d *Disassembler) Disassemble(w io.Writer) {
 			}
 		} else {
 			bs := []byte{b}
-			printData(&sb, bs, cursor+d.BranchAdjust)
+			printData(&sb, bs, true, cursor+d.BranchAdjust)
 			appendPrintableBytes(&sb, bs)
 			cursor++
 		}
@@ -192,10 +195,12 @@ func printInstruction(sb *strings.Builder, op Opcode, instruction []byte, cursor
 
 // Print data in hex as comma-delimited EQUB statement. Assumes that there are
 // between 1 and 3 data bytes though it will handle any amount.
-func printData(sb *strings.Builder, data []byte, address uint) {
+// If bytesInComment is true then the data byte values will be repeated in the
+// comment section.
+func printData(sb *strings.Builder, data []byte, bytesInComment bool, address uint) {
 	// Data will be printed to a line with format
-	// EQUB &[byte],...,&[byte]    \ [address] [opcode]   [printable bytes]
-	//                             ^--- 25th column       ^--- 45th column
+	// EQUB &[byte],...,&[byte]    \ [address] [byte] ... [byte] [printable bytes]
+	//                             ^--- 25th column              ^--- 45th column
 	var out []string
 	for _, i := range data {
 		out = append(out, fmt.Sprintf("&%02X", i))
@@ -205,7 +210,14 @@ func printData(sb *strings.Builder, data []byte, address uint) {
 
 	appendSpaces(sb, max(24-sb.Len(), 1))
 	sb.WriteString("\\ ")
-	sb.WriteString(fmt.Sprintf("&%04X", address))
+
+	out = []string{fmt.Sprintf("&%04X", address)}
+	if bytesInComment {
+		for _, i := range data {
+			out = append(out, fmt.Sprintf("%02X", i))
+		}
+	}
+	sb.WriteString(strings.Join(out, " "))
 	sb.WriteByte(' ')
 }
 
