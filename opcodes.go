@@ -319,8 +319,6 @@ var (
 		0x232: "IND2V",
 		0x234: "IND3V",
 	}
-
-	branchTargets map[uint]int
 )
 
 type branchType int
@@ -354,64 +352,7 @@ func (o *Opcode) branchOrJump() branchType {
 	return btNeither
 }
 
-func decode(op Opcode, bytes []byte, cursor, branchAdjust uint) string {
-	// Jump and Branch instructions have special handling
-	if bytes[0] == OpJMPAbsolute || bytes[0] == OpJSRAbsolute {
-		// JMP &1234 and JSR &1234 are special cased with naming for well known
-		// OS call entry points.
-		return genAbsoluteOsCall(bytes)
-	}
-	if op.branchOrJump() == btBranch {
-		return genBranch(bytes, cursor, branchAdjust)
-	}
-
-	switch op.AddrMode {
-	case None:
-		return ""
-	case Accumulator:
-		return "A"
-	case Immediate:
-		return fmt.Sprintf("#&%02X", bytes[1])
-	case Absolute:
-		val := (uint(bytes[2]) << 8) + uint(bytes[1])
-
-		// Look up in the OS vector address space
-		if osv, ok := osVectorAddresses[val]; ok {
-			return osv
-		}
-		// Try again with the bottom bit cleared because each vector is 16-bit
-		// eg. USERV vector is at 0x200 and 0x201.
-		if osv, ok := osVectorAddresses[val&^uint(1)]; ok {
-			return osv + "+1"
-		}
-
-		// Unrecognized address, return as numeric
-		return fmt.Sprintf("&%04X", val)
-	case ZeroPage:
-		return fmt.Sprintf("&%02X", bytes[1])
-	case ZeroPageX:
-		return fmt.Sprintf("&%02X,X", bytes[1])
-	case ZeroPageY:
-		return fmt.Sprintf("&%02X,Y", bytes[1])
-	case Indirect:
-		val := (uint(bytes[2]) << 8) + uint(bytes[1])
-		return fmt.Sprintf("(&%04X)", val)
-	case AbsoluteX:
-		val := (uint(bytes[2]) << 8) + uint(bytes[1])
-		return fmt.Sprintf("&%04X,X", val)
-	case AbsoluteY:
-		val := (uint(bytes[2]) << 8) + uint(bytes[1])
-		return fmt.Sprintf("&%04X,Y", val)
-	case IndirectX:
-		return fmt.Sprintf("(&%02X,X)", bytes[1])
-	case IndirectY:
-		return fmt.Sprintf("(&%02X),Y", bytes[1])
-	default:
-		return "UNKNOWN ADDRESS MODE"
-	}
-}
-
-func genAbsoluteOsCall(bytes []byte) string {
+func genAbsoluteOsCall(bytes []byte, branchTargets map[uint]int) string {
 	addr := (uint(bytes[2]) << 8) + uint(bytes[1])
 
 	// Check if it is a well known OS address
@@ -427,7 +368,7 @@ func genAbsoluteOsCall(bytes []byte) string {
 	return fmt.Sprintf("&%04X", addr)
 }
 
-func genBranch(bytes []byte, cursor, branchAdjust uint) string {
+func genBranch(bytes []byte, cursor, branchAdjust uint, branchTargets map[uint]int) string {
 	// From http://www.6502.org/tutorials/6502opcodes.html
 	// "When calculating branches a forward branch of 6 skips the following 6
 	// bytes so, effectively the program counter points to the address that is 8

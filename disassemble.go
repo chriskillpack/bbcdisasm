@@ -39,6 +39,7 @@ type Disassembler struct {
 
 	usedOSAddress map[uint]bool
 	usedOSVector  map[uint]bool
+	branchTargets map[uint]int
 }
 
 // NewDisassembler initializes a new Disassembler with the target progrsm
@@ -119,7 +120,7 @@ func (d *Disassembler) Disassemble(w io.Writer) {
 	// and print to stdout.
 	d.walk(vtAll, func(cursor uint, codeAddrIdx int, b byte, op Opcode, opOk bool) int {
 		var sb strings.Builder
-		if targetIdx, ok := branchTargets[cursor+d.BranchAdjust]; ok {
+		if targetIdx, ok := d.branchTargets[cursor+d.BranchAdjust]; ok {
 			sb.WriteByte('.')
 			sb.WriteString(fmt.Sprintf(labelFormatString, targetIdx))
 			sb.WriteString("\n")
@@ -155,7 +156,7 @@ func (d *Disassembler) Disassemble(w io.Writer) {
 
 			if doc && wai && !straddles {
 				// If here then documented instruction that will assemble correctly
-				printInstruction(&sb, op, instruction, cursor, d.BranchAdjust)
+				d.printInstruction(&sb, op, instruction, cursor)
 
 				advance = op.Length
 			} else {
@@ -202,20 +203,20 @@ func (d *Disassembler) Disassemble(w io.Writer) {
 	})
 }
 
-func printInstruction(sb *strings.Builder, op Opcode, instruction []byte, cursor, branchAdjust uint) {
+func (d *Disassembler) printInstruction(sb *strings.Builder, op Opcode, instruction []byte, cursor uint) {
 	// A valid instruction will be printed to a line with format
 	//
 	// [instruction mnemonic]     \ [address] [instruction opcodes]   [printable bytes]
 	//                            ^--- 25th column                    ^--- 45th column
 	sb.WriteString(op.Name)
 	sb.WriteByte(' ')
-	sb.WriteString(decode(op, instruction, cursor, branchAdjust))
+	sb.WriteString(d.decode(op, instruction, cursor))
 
 	appendSpaces(sb, max(24-sb.Len(), 1))
 	sb.WriteString("\\ ")
 
 	out := []string{
-		fmt.Sprintf("&%04X", cursor+branchAdjust),
+		fmt.Sprintf("&%04X", cursor+d.BranchAdjust),
 	}
 	for _, i := range instruction {
 		out = append(out, fmt.Sprintf("%02X", i))
@@ -304,12 +305,69 @@ func willAssembleIdentically(op Opcode, instruction []byte) bool {
 	return true
 }
 
+func (d *Disassembler) decode(op Opcode, bytes []byte, cursor uint) string {
+	// Jump and Branch instructions have special handling
+	if bytes[0] == OpJMPAbsolute || bytes[0] == OpJSRAbsolute {
+		// JMP &1234 and JSR &1234 are special cased with naming for well known
+		// OS call entry points.
+		return genAbsoluteOsCall(bytes, d.branchTargets)
+	}
+	if op.branchOrJump() == btBranch {
+		return genBranch(bytes, cursor, d.BranchAdjust, d.branchTargets)
+	}
+
+	switch op.AddrMode {
+	case None:
+		return ""
+	case Accumulator:
+		return "A"
+	case Immediate:
+		return fmt.Sprintf("#&%02X", bytes[1])
+	case Absolute:
+		val := (uint(bytes[2]) << 8) + uint(bytes[1])
+
+		// Look up in the OS vector address space
+		if osv, ok := osVectorAddresses[val]; ok {
+			return osv
+		}
+		// Try again with the bottom bit cleared because each vector is 16-bit
+		// eg. USERV vector is at 0x200 and 0x201.
+		if osv, ok := osVectorAddresses[val&^uint(1)]; ok {
+			return osv + "+1"
+		}
+
+		// Unrecognized address, return as numeric
+		return fmt.Sprintf("&%04X", val)
+	case ZeroPage:
+		return fmt.Sprintf("&%02X", bytes[1])
+	case ZeroPageX:
+		return fmt.Sprintf("&%02X,X", bytes[1])
+	case ZeroPageY:
+		return fmt.Sprintf("&%02X,Y", bytes[1])
+	case Indirect:
+		val := (uint(bytes[2]) << 8) + uint(bytes[1])
+		return fmt.Sprintf("(&%04X)", val)
+	case AbsoluteX:
+		val := (uint(bytes[2]) << 8) + uint(bytes[1])
+		return fmt.Sprintf("&%04X,X", val)
+	case AbsoluteY:
+		val := (uint(bytes[2]) << 8) + uint(bytes[1])
+		return fmt.Sprintf("&%04X,Y", val)
+	case IndirectX:
+		return fmt.Sprintf("(&%02X,X)", bytes[1])
+	case IndirectY:
+		return fmt.Sprintf("(&%02X),Y", bytes[1])
+	default:
+		return "UNKNOWN ADDRESS MODE"
+	}
+}
+
 func (d *Disassembler) findBranchTargets() {
 	// Track all reachable instructions. That is the address of the first
 	// opcode of each instruction starting at offset and moving forwards.
 	iloc := make(map[uint]bool)
 
-	branchTargets = make(map[uint]int)
+	d.branchTargets = make(map[uint]int)
 
 	d.walk(vtCode, func(cursor uint, _ int, b byte, op Opcode, opOk bool) int {
 		iloc[cursor+d.BranchAdjust] = true // Reachable instruction
@@ -327,15 +385,15 @@ func (d *Disassembler) findBranchTargets() {
 				boff += 2
 
 				tgt := cursor + uint(boff) + d.BranchAdjust
-				if _, ok := branchTargets[tgt]; !ok {
-					branchTargets[tgt] = 0 // value will be filled out later
+				if _, ok := d.branchTargets[tgt]; !ok {
+					d.branchTargets[tgt] = 0 // value will be filled out later
 				}
 			case btJump:
 				// Skip indirect jump since we don't know the target of the jump
 				if b != OpJMPIndirect {
 					tgt := (uint(instruction[2]) << 8) + uint(instruction[1])
-					if _, ok := branchTargets[tgt]; !ok {
-						branchTargets[tgt] = 0 // value will be filled out later
+					if _, ok := d.branchTargets[tgt]; !ok {
+						d.branchTargets[tgt] = 0 // value will be filled out later
 					}
 
 					// If the jump target is a well known OS call then mark as seen
@@ -363,22 +421,22 @@ func (d *Disassembler) findBranchTargets() {
 	// happen disassembling data and the byte values generate a branch
 	// instruction with a relative address that does not point to the beginning
 	// of a reachable instruction.
-	for k := range branchTargets {
+	for k := range d.branchTargets {
 		if _, ok := iloc[k]; !ok {
-			delete(branchTargets, k)
+			delete(d.branchTargets, k)
 		}
 	}
 
 	// Sort branch targets in order of increasing address
-	bt := make([]int, len(branchTargets))
+	bt := make([]int, len(d.branchTargets))
 	i := 0
-	for k := range branchTargets {
+	for k := range d.branchTargets {
 		bt[i] = int(k)
 		i++
 	}
 	sort.Ints(bt)
 	for i, v := range bt {
-		branchTargets[uint(v)] = i
+		d.branchTargets[uint(v)] = i
 	}
 }
 
