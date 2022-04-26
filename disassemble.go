@@ -9,6 +9,18 @@ import (
 	"text/template"
 )
 
+// Which types of data should the visit callback to walk be invoked for.
+// This has only the most basic support right now.
+type visitMask uint
+
+const (
+	vtCode visitMask = 1 << iota
+	vtData
+
+	vtNone = visitMask(0)
+	vtAll  = ^visitMask(0)
+)
+
 // Disassembler converts byte code to a textual representation
 type Disassembler struct {
 	Program  []byte // The 6502 program to be disassembled
@@ -35,6 +47,42 @@ func NewDisassembler(program []byte) *Disassembler {
 		Program:       program,
 		usedOSAddress: make(map[uint]bool),
 		usedOSVector:  make(map[uint]bool),
+	}
+}
+
+func (d *Disassembler) walk(vm visitMask, fn func(cursor uint, codeAddrIdx int, b byte, op Opcode, opOk bool) int) {
+	cursor := d.Offset
+	prevCur := cursor
+	codeAddrIdx := 0
+	for cursor < (d.Offset + d.MaxBytes) {
+		// Do we have remaining code addresses?
+		if codeAddrIdx < len(d.CodeAddrs) {
+			// If we overstepped the next code address, pull the cursor back
+			ca := d.CodeAddrs[codeAddrIdx]
+			if prevCur < ca && cursor >= ca {
+				cursor = ca
+				codeAddrIdx++
+			}
+		}
+		prevCur = cursor
+
+		// All instructions are at least one byte long and the first byte is
+		// sufficient to identify the opcode.
+		b := d.Program[cursor]
+		op, opOk := OpCodesMap[b]
+
+		// If the decoded 'instruction' straddles a code address then treat it
+		// as data.
+		if opOk && codeAddrIdx < len(d.CodeAddrs) {
+			if cursor+op.Length >= d.CodeAddrs[codeAddrIdx] {
+				if vm&vtData == 0 {
+					cursor = d.CodeAddrs[codeAddrIdx]
+					continue
+				}
+			}
+		}
+
+		cursor += uint(fn(cursor, codeAddrIdx, b, op, opOk))
 	}
 }
 
@@ -69,21 +117,7 @@ func (d *Disassembler) Disassemble(w io.Writer) {
 
 	// Second pass through program is to decode each instruction
 	// and print to stdout.
-	cursor := d.Offset
-	prevCur := cursor
-	codeAddrIdx := 0
-	for cursor < (d.Offset + d.MaxBytes) {
-		// Do we have remaining code addresses?
-		if codeAddrIdx < len(d.CodeAddrs) {
-			// If we overstepped the next code address, pull the cursor back
-			ca := d.CodeAddrs[codeAddrIdx]
-			if prevCur < ca && cursor >= ca {
-				cursor = ca
-				codeAddrIdx++
-			}
-		}
-		prevCur = cursor
-
+	d.walk(vtAll, func(cursor uint, codeAddrIdx int, b byte, op Opcode, opOk bool) int {
 		var sb strings.Builder
 		if targetIdx, ok := branchTargets[cursor+d.BranchAdjust]; ok {
 			sb.WriteByte('.')
@@ -93,12 +127,9 @@ func (d *Disassembler) Disassemble(w io.Writer) {
 
 			sb.Reset()
 		}
-
 		sb.WriteByte(' ')
 
-		// All instructions are at least one byte long and the first byte is
-		// sufficient to identify the opcode.
-		b := d.Program[cursor]
+		var advance uint
 
 		// Situations that can arise decoding the next instruction
 		// 1) If the byte does not match an opcode - print as data
@@ -112,8 +143,7 @@ func (d *Disassembler) Disassemble(w io.Writer) {
 		//    a) If the instruction straddles a targeted code address then print
 		//       as data the bytes up to the targeted address.
 		//    b) Otherwise retrieve operands, print as data, mark UD
-		op, ok := OpCodesMap[b]
-		if ok {
+		if opOk {
 			instruction := d.Program[cursor : cursor+op.Length]
 			doc := isOpcodeDocumented(op)
 			wai := willAssembleIdentically(op, instruction)
@@ -127,7 +157,7 @@ func (d *Disassembler) Disassemble(w io.Writer) {
 				// If here then documented instruction that will assemble correctly
 				printInstruction(&sb, op, instruction, cursor, d.BranchAdjust)
 
-				cursor += op.Length
+				advance = op.Length
 			} else {
 				// The opcode was unrecognized, the opcode belongs to an
 				// undocumented instruction, the instruction will straddle a
@@ -156,18 +186,20 @@ func (d *Disassembler) Disassemble(w io.Writer) {
 
 				appendPrintableBytes(&sb, instruction)
 
-				cursor += uint(len(instruction))
+				advance = uint(len(instruction))
 			}
 		} else {
 			bs := []byte{b}
 			printData(&sb, bs, true, cursor+d.BranchAdjust)
 			appendPrintableBytes(&sb, bs)
-			cursor++
+			advance = 1
 		}
 
 		sb.WriteByte('\n')
 		w.Write([]byte(sb.String()))
-	}
+
+		return int(advance)
+	})
 }
 
 func printInstruction(sb *strings.Builder, op Opcode, instruction []byte, cursor, branchAdjust uint) {
@@ -278,36 +310,10 @@ func (d *Disassembler) findBranchTargets() {
 	iloc := make(map[uint]bool)
 
 	branchTargets = make(map[uint]int)
-	cursor := d.Offset
-	prevCur := cursor
-	codeAddrIdx := 0
-	for cursor < (d.Offset + d.MaxBytes) {
-		// Do we have remaining code addresses?
-		if codeAddrIdx < len(d.CodeAddrs) {
-			// If we overstepped the next code address, pull the cursor back
-			ca := d.CodeAddrs[codeAddrIdx] - d.BranchAdjust
-			if prevCur < ca && cursor >= ca {
-				cursor = ca
-				codeAddrIdx++
-			}
-		}
-		prevCur = cursor
 
+	d.walk(vtCode, func(cursor uint, _ int, b byte, op Opcode, opOk bool) int {
 		iloc[cursor+d.BranchAdjust] = true // Reachable instruction
-		b := d.Program[cursor]
-
-		if op, ok := OpCodesMap[b]; ok {
-			// If the decoded 'instruction' (it could be data) straddles a
-			// targeted code address then skip over it and move the cursor to
-			// the code address.
-			if codeAddrIdx < len(d.CodeAddrs) {
-				if cursor+op.Length > d.CodeAddrs[codeAddrIdx] {
-					cursor += d.CodeAddrs[codeAddrIdx] - cursor
-					codeAddrIdx++
-					continue
-				}
-			}
-
+		if opOk {
 			instruction := d.Program[cursor : cursor+op.Length]
 			switch op.branchOrJump() {
 			case btBranch:
@@ -347,11 +353,11 @@ func (d *Disassembler) findBranchTargets() {
 				}
 			}
 
-			cursor += uint(len(instruction))
-		} else {
-			cursor++
+			return len(instruction)
 		}
-	}
+
+		return 1
+	})
 
 	// Reject branch targets that point to unreachable instructions. This can
 	// happen disassembling data and the byte values generate a branch
