@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 	"text/template"
 )
@@ -20,6 +21,11 @@ const (
 	vtNone = visitMask(0)
 	vtAll  = ^visitMask(0)
 )
+
+type varDef struct {
+	Sval string
+	Ival uint
+}
 
 // Disassembler converts byte code to a textual representation
 type Disassembler struct {
@@ -40,6 +46,7 @@ type Disassembler struct {
 	usedOSAddress map[uint]bool
 	usedOSVector  map[uint]bool
 	branchTargets map[uint]int
+	vars          map[string]varDef
 }
 
 // NewDisassembler initializes a new Disassembler with the target progrsm
@@ -48,7 +55,28 @@ func NewDisassembler(program []byte) *Disassembler {
 		Program:       program,
 		usedOSAddress: make(map[uint]bool),
 		usedOSVector:  make(map[uint]bool),
+		vars:          make(map[string]varDef),
 	}
+}
+
+// AddVar defines a new variable. The disassembler will include the definition
+// at the top of the disassembly and refer to matching value by name.
+func (d *Disassembler) AddVar(name, value string) error {
+	var base int
+	ovalue := value
+
+	// If the value starts with a & then assume it is an hexadecimal value
+	// in the idiomatic form of BBC BASIC.
+	if value[0] == '&' {
+		value = strings.Trim(value, "&")
+		base = 16
+	}
+	ival, err := strconv.ParseInt(value, base, 0)
+	if err != nil {
+		return err
+	}
+	d.vars[name] = varDef{ovalue, uint(ival)}
+	return nil
 }
 
 func (d *Disassembler) walk(vm visitMask, fn func(cursor uint, codeAddrIdx int, b byte, op Opcode, opOk bool) int) {
@@ -110,8 +138,9 @@ func (d *Disassembler) Disassemble(w io.Writer) {
 		OSAddress     map[uint]string
 		UsedOSVector  map[uint]bool
 		OSVector      map[uint]string
+		Vars          map[string]varDef
 		LoadAddr      uint
-	}{d.usedOSAddress, addressToOsCallName, d.usedOSVector, osVectorAddresses, d.BranchAdjust}
+	}{d.usedOSAddress, addressToOsCallName, d.usedOSVector, osVectorAddresses, d.vars, d.BranchAdjust}
 	if err := distem.Execute(w, data); err != nil {
 		panic(err)
 	}
@@ -336,30 +365,68 @@ func (d *Disassembler) decode(op Opcode, bytes []byte, cursor uint) string {
 			return osv + "+1"
 		}
 
+		if dvar, ok := d.lookupVar(val); ok {
+			return dvar
+		}
+
 		// Unrecognized address, return as numeric
 		return fmt.Sprintf("&%04X", val)
 	case ZeroPage:
+		if dvar, ok := d.lookupVar(uint(bytes[1])); ok {
+			return dvar
+		}
 		return fmt.Sprintf("&%02X", bytes[1])
 	case ZeroPageX:
+		if dvar, ok := d.lookupVar(uint(bytes[1])); ok {
+			return dvar + ",X"
+		}
 		return fmt.Sprintf("&%02X,X", bytes[1])
 	case ZeroPageY:
+		if dvar, ok := d.lookupVar(uint(bytes[1])); ok {
+			return dvar + ",Y"
+		}
 		return fmt.Sprintf("&%02X,Y", bytes[1])
 	case Indirect:
 		val := (uint(bytes[2]) << 8) + uint(bytes[1])
+		if dvar, ok := d.lookupVar(val); ok {
+			return "(" + dvar + ")"
+		}
 		return fmt.Sprintf("(&%04X)", val)
 	case AbsoluteX:
 		val := (uint(bytes[2]) << 8) + uint(bytes[1])
+		if dvar, ok := d.lookupVar(val); ok {
+			return dvar + ",X"
+		}
 		return fmt.Sprintf("&%04X,X", val)
 	case AbsoluteY:
 		val := (uint(bytes[2]) << 8) + uint(bytes[1])
+		if dvar, ok := d.lookupVar(val); ok {
+			return dvar + ",Y"
+		}
 		return fmt.Sprintf("&%04X,Y", val)
 	case IndirectX:
+		if dvar, ok := d.lookupVar(uint(bytes[1])); ok {
+			return "(" + dvar + ",X)"
+		}
 		return fmt.Sprintf("(&%02X,X)", bytes[1])
 	case IndirectY:
+		if dvar, ok := d.lookupVar(uint(bytes[1])); ok {
+			return "(" + dvar + "),Y"
+		}
 		return fmt.Sprintf("(&%02X),Y", bytes[1])
 	default:
 		return "UNKNOWN ADDRESS MODE"
 	}
+}
+
+func (d *Disassembler) lookupVar(val uint) (name string, ok bool) {
+	for varn, varv := range d.vars {
+		if varv.Ival == val {
+			return varn, true
+		}
+	}
+
+	return "", false
 }
 
 func (d *Disassembler) findBranchTargets() {
@@ -454,6 +521,11 @@ var disasmHeader = `\ **********************************************************
 {{ if .UsedOSVector }}\ OS Vector Addresses
 {{ $vec := .OSVector }}
 {{- range $addr, $elem := .UsedOSVector }}{{ printf "%-5s" (index $vec $addr) }} = {{ printf "&%0X" $addr }}
+{{ end }}
+{{- end }}
+{{ if .Vars }}\ Defined Variables
+{{ $var := .Vars }}
+{{- range $name, $value := .Vars }}{{ printf "%-5s" $name }} = {{ print $value.Sval }}
 {{ end }}
 {{- end }}
 {{ if .LoadAddr }}CODE% = {{ printf "&%X" .LoadAddr }}

@@ -104,6 +104,28 @@ $ bbcdisasm d --loadaddr 0x3000 exile/EXILE 0x1A10 8
  JSR OSBYTE             \ &4A16 20 F4 FF     ..
 ```
 
+#### User defined variables
+
+The disassembler allows simple variables to be declared via command line options in the form `-D <name>=<value>`. Some operand values are checked against these variables and on a match the literal value will be replaced with the variable name. The variable definitions are included at the top of the disassembly before code disassembly.
+
+```
+$ bbcdisasm d -D apples=0x0DBC --loadaddr 0x3000 exile_files/EXILE 0x1A38 16
+...
+\ Defined Variables
+apples = 0x0DBC
+...
+ LDY #&0F               \ &4A38 A0 0F       ..
+.label_0
+ CPY apples             \ &4A3A CC BC 0D    ...
+ BEQ label_1            \ &4A3D F0 03       ..
+```
+
+Without the variable definition the `CPY` line would be disassembled as
+
+```
+ CPY &0DBC              \ &4A3A CC BC 0D    ...
+```
+
 #### beebasm workaround
 
 beebasm has a trait that need to be worked around, "zero page replacement". In this situation an instruction with an absolute address in the zero-page is replaced with the zero page form of the instruction, e.g. `LDA &0012` (`AD`, `12`, `00`) will be assembled as `LDA &12` (`A5`, `12`). This break binary compatibility. The disassembler will identify instructions where this will happen and emit instead as a data sequence `EQUB &AD, &12, &00`. This situation generally happens when disassembling data, as written code will prefer the zero page form as it is faster and uses less bytes.
